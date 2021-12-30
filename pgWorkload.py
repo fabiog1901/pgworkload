@@ -70,12 +70,12 @@ class Stats:
                             action, 90)) * 1000, 2),
                         round(float(get_percentile_measurement(
                             action, 95)) * 1000, 2),
-                        round(float(get_percentile_measurement(action, 100)) * 1000, 2)]
+                        round(float(get_percentile_measurement(action, 99)) * 1000, 2)]
             else:
                 return [action, round(elapsed, 0), self.cumulative_counts.get(action, 0), 0, 0, 0, 0, 0, 0]
 
         header = ["transaction name", "elapsed_time",  "total_ops", "tot_ops/second",
-                  "period_ops", "period_ops/second", "p50(ms)", "p90(ms)", "p95(ms)", "max(ms)"]
+                  "period_ops", "period_ops/second", "p50(ms)", "p90(ms)", "p95(ms)", "p99(ms)"]
         rows = []
 
         # self.mutex.acquire()

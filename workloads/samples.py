@@ -2,16 +2,11 @@ import datetime
 import itertools
 import random
 import string
+import time
 import uuid
 
 
 class Bank:
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        pass
 
     def __init__(self, parameters=[], echo=False):
         self.txns = [self.txn0, self.txn1, self.txn2]
@@ -23,6 +18,8 @@ class Bank:
     def init(self, conn):
         pass
 
+    # conn is an instance of a psycopg connection
+    # conn is set with autocommit=True, so no need to send a commit message
     def txn0(self, conn):
         self.uuid = uuid.uuid4()
         self.ts = datetime.datetime.now()
@@ -33,15 +30,22 @@ class Bank:
                     """
             cur.execute(stmt, (self.uuid, self.event, self.lane, self.ts))
 
+    # example on how to create a transaction with multiple queries
     def txn1(self, conn):
         self.ts = datetime.datetime.now()
         self.event = 1
 
         with conn.transaction() as tx:
             with conn.cursor() as cur:
-            stmt = """insert into bank values (%s, %s, %s, %s); 
-                    """
-            cur.execute(stmt, (self.uuid, self.event, self.lane, self.ts))
+                cur.execute("select * from bank where id = %s", (self.uuid,))
+                cur.fetchone()
+                
+                # simulate microservice doing something
+                time.sleep(0.005)
+                
+                stmt = """insert into bank values (%s, %s, %s, %s); 
+                        """
+                cur.execute(stmt, (self.uuid, self.event, self.lane, self.ts))
 
     def txn2(self, conn):
         self.ts = datetime.datetime.now()
