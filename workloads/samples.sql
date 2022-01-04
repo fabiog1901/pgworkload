@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS balance (
     n_tcost DECIMAL(19, 6) NULL,
     memo_firmuse DECIMAL(16, 6) NULL,
     fed_req_value DECIMAL(19, 6) NULL,
-    hold_type STRING NOT NULL DEFAULT 'L' :: :STRING,
+    hold_type STRING NOT NULL DEFAULT 'L',
     seg_earlyrel DECIMAL(19, 8) NULL,
     factor DECIMAL(19, 12) NULL,
     factor_dt DATE NULL,

@@ -1,5 +1,6 @@
 import datetime
 import itertools
+import psycopg
 import random
 import string
 import time
@@ -8,30 +9,44 @@ import uuid
 
 class Bank:
 
-    def __init__(self, parameters=[], echo=False):
+    def __init__(self, parameters=[]):
+        # self.txns holds the list of transactions to be executed in sequence
         self.txns = [self.txn0, self.txn1, self.txn2]
+        
+        # you can arbitrarely add any variables you want
         self.uuid = ''
         self.ts = ''
         self.event = ''
         self.lane = parameters[0]
 
-    def init(self, conn):
+    def init(self, conn: psycopg.Connection):
+        with conn.cursor() as cur:
+            ddl = """CREATE DATABASE IF NOT EXISTS samples; 
+                CREATE TABLE bank (
+                    id UUID, 
+                    event INT, 
+                    lane STRING, 
+                    ts TIMESTAMP, 
+                    PRIMARY KEY (id, event)
+                );
+            """
+            cur.execute(ddl)
         pass
 
-    # conn is an instance of a psycopg connection
+    # conn is an instance of a psycopg connection object
     # conn is set with autocommit=True, so no need to send a commit message
-    def txn0(self, conn):
+    def txn0(self, conn: psycopg.Connection):
         self.uuid = uuid.uuid4()
         self.ts = datetime.datetime.now()
         self.event = 0
-
+        
         with conn.cursor() as cur:
             stmt = """insert into bank values (%s, %s, %s, %s); 
                     """
             cur.execute(stmt, (self.uuid, self.event, self.lane, self.ts))
 
     # example on how to create a transaction with multiple queries
-    def txn1(self, conn):
+    def txn1(self, conn: psycopg.Connection):
         self.ts = datetime.datetime.now()
         self.event = 1
 
@@ -47,14 +62,21 @@ class Bank:
                         """
                 cur.execute(stmt, (self.uuid, self.event, self.lane, self.ts))
 
-    def txn2(self, conn):
+    def txn2(self, conn: psycopg.Connection):
         self.ts = datetime.datetime.now()
         self.event = 2
-
-        with conn.cursor() as cur:
-            stmt = """insert into bank values (%s, %s, %s, %s); 
-                    """
-            cur.execute(stmt, (self.uuid, self.event, self.lane, self.ts))
+        
+        with conn.transaction() as tx:
+            with conn.cursor() as cur:
+                cur.execute("select * from bank where id = %s", (self.uuid,))
+                cur.fetchone()
+                
+                # simulate microservice doing something
+                time.sleep(0.010)
+                
+                stmt = """insert into bank values (%s, %s, %s, %s); 
+                        """
+                cur.execute(stmt, (self.uuid, self.event, self.lane, self.ts))
 
 
 class Balance:
@@ -234,7 +256,7 @@ class Balance:
             datetime.datetime.today()
         )
         
-    def init(self, conn):
+    def init(self, conn: psycopg.Connection):
         with conn.cursor() as cur:
             ddl = """
             CREATE TABLE balance (
@@ -293,7 +315,7 @@ class Balance:
     def next_row(self):
         return int(next(self.row_cycle))
 
-    def txn(self, conn):
+    def txn(self, conn: psycopg.Connection):
 
         stmt = "INSERT INTO balance VALUES "
         stmt_args = ()
