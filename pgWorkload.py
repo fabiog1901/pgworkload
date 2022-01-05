@@ -65,6 +65,8 @@ class Stats:
                         len(self.window_stats[action]),
                         round(
                             len(self.window_stats[action]) / self.frequency, 2),
+                        round(
+                            float(numpy.mean(self.window_stats[action]) * 1000), 2),
                         round(float(get_percentile_measurement(
                             action, 50)) * 1000, 2),
                         round(float(get_percentile_measurement(
@@ -72,12 +74,14 @@ class Stats:
                         round(float(get_percentile_measurement(
                             action, 95)) * 1000, 2),
                         round(float(get_percentile_measurement(
-                            action, 99)) * 1000, 2)]
+                            action, 99)) * 1000, 2),
+                        round(float(get_percentile_measurement(
+                            action, 100)) * 1000, 2)]
             else:
                 return [action, round(elapsed, 0), self.cumulative_counts.get(action, 0), 0, 0, 0, 0, 0, 0]
 
-        header = ["transaction name", "elapsed_time",  "total_ops", "tot_ops/second",
-                  "period_ops", "period_ops/second", "p50(ms)", "p90(ms)", "p95(ms)", "p99(ms)"]
+        header = ["id", "elapsed",  "tot_ops", "tot_ops/s",
+                  "period_ops", "period_ops/s", "mean(ms)",  "p50(ms)", "p90(ms)", "p95(ms)", "p99(ms)", "pMax(ms)"]
         rows = []
 
         # self.mutex.acquire()
@@ -166,6 +170,7 @@ def signal_handler(sig, frame):
     global stats
 
     logging.info("KeyboardInterrupt signal detected. Stopping processes...")
+
     # send the poison pill to each worker
     for _ in range(args.concurrency):
         kill_q.put(None)

@@ -83,7 +83,7 @@ class Balance:
 
     def __init__(self, parameters=[]):
         # create a list of transactions with as many elements as parameters
-        self.txns = [self.txn for x in parameters]
+        self.txns = [self.insert_balance for x in parameters]
         # create a continuous cycle from the parameters
         self.row_cycle = itertools.cycle(parameters)
 
@@ -315,7 +315,7 @@ class Balance:
     def next_row(self):
         return int(next(self.row_cycle))
 
-    def txn(self, conn: psycopg.Connection):
+    def insert_balance(self, conn: psycopg.Connection):
 
         stmt = "INSERT INTO balance VALUES "
         stmt_args = ()
