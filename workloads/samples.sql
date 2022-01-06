@@ -1,3 +1,27 @@
+-- Retailer schema
+CREATE TABLE IF NOT EXISTS credits (
+    id INT2 NOT NULL,
+    code UUID NOT NULL,
+    channel STRING(1) NOT NULL,
+    pid INT4 NOT NULL,
+    end_date DATE NOT NULL,
+    STATUS STRING(1) NOT NULL,
+    start_date DATE NOT NULL,
+    CONSTRAINT "primary" PRIMARY KEY (id ASC, code ASC),
+    INDEX credits_pid_idx (pid ASC),
+    INDEX credits_code_id_idx (code ASC, id ASC) STORING (channel, STATUS, end_date, start_date)
+);
+
+CREATE TABLE IF NOT EXISTS offers (
+    id INT4 NOT NULL,
+    code UUID NOT NULL,
+    token UUID NOT NULL,
+    start_date DATE,
+    end_date DATE,
+    CONSTRAINT "primary" PRIMARY KEY (id ASC, code ASC, token ASC),
+    INDEX offers_token_idx (token ASC)
+);
+
 -- Bank schema
 CREATE TABLE IF NOT EXISTS bank (
     id UUID,
@@ -57,45 +81,5 @@ CREATE TABLE IF NOT EXISTS balance (
         sym_no ASC,
         hold_type ASC
     ),
-    INDEX balance_i3 (sym_no ASC, system_dt ASC),
-    FAMILY "primary" (
-        id,
-        corr,
-        system_dt,
-        office,
-        acct_no,
-        sub_acct_no,
-        acct_type,
-        symbol,
-        sym_no,
-        price,
-        topen,
-        tclose,
-        tmktval,
-        sopen,
-        sclose,
-        smktval,
-        seg_orig,
-        seg_qty,
-        seg_fluid,
-        memo_rights,
-        memo_tender,
-        memo_splits,
-        memo_merger,
-        memo_acats,
-        memo_transfer,
-        memo_safekeep,
-        ex_req_value,
-        ho_req_value,
-        ex_req_method,
-        exec_symbol,
-        g_tcost,
-        n_tcost,
-        memo_firmuse,
-        fed_req_value,
-        hold_type,
-        seg_earlyrel,
-        factor,
-        factor_dt
-    )
+    INDEX balance_i3 (sym_no ASC, system_dt ASC)
 );

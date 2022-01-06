@@ -1,4 +1,6 @@
+import collections
 import datetime
+import faker
 import itertools
 import psycopg
 import random
@@ -7,12 +9,168 @@ import time
 import uuid
 
 
+class SimpleFaker():
+    
+    global fake
+    fake = faker.Faker()
+    
+    def date_time_between(self, start: str = None, end: str = None, delta: int = 365, format: str = '%Y-%m-%d %H:%M:%S'):
+        if start is None:
+            start = datetime.date.today().isoformat()
+        if end is None:
+            end = (datetime.date.today() +
+                   datetime.timedelta(days=delta)).isoformat()
+        return fake.date_time_between(datetime.datetime.fromisoformat(start).date(), datetime.datetime.fromisoformat(end).date()).strftime(format)
+    
+    def random_choice(self, choices: list):
+        return fake.random_element(collections.OrderedDict(choices))
+    
+    
+class Retailer:
+
+    def __init__(self, parameters=[]):
+
+        # self.schema holds the DDL statement to create the schema
+        self.schema = """
+            CREATE TABLE IF NOT EXISTS credits (
+                id INT2 NOT NULL,
+                code UUID NOT NULL,
+                channel STRING(1) NOT NULL,
+                pid INT4 NOT NULL,
+                end_date DATE NOT NULL,
+                status STRING(1) NOT NULL,
+                start_date DATE NOT NULL,
+                CONSTRAINT "primary" PRIMARY KEY (id ASC, code ASC),
+                INDEX credits_pid_idx (pid ASC),
+                INDEX credits_code_id_idx (code ASC, id ASC) STORING (channel, status, end_date, start_date)
+            );
+
+            CREATE TABLE IF NOT EXISTS offers (
+                id INT4 NOT NULL,
+                code UUID NOT NULL,
+                token UUID NOT NULL,
+                start_date DATE,
+                end_date DATE,
+                CONSTRAINT "primary" PRIMARY KEY (id ASC, code ASC, token ASC),
+                INDEX offers_token_idx (token ASC)
+            );
+            """
+
+        # self.run holds the list of transactions to be executed in sequence
+        self.run = [self.q1, self.q2]
+
+        fake = faker.Faker()
+        simplefake = SimpleFaker()
+        rd = random.Random()
+
+        '''
+        # table credits ~7.5mio rows
+        17,f5da34d7-6c8a-4c1c-af05-e09d41f9fca2,O,2223248,2020-12-10 02:05:14,A,2020-12-25 02:39:30
+
+        int::start=1,end=28,seed=0; 
+        uuid::seed=0; 
+        
+        choices::list=O R,weights=9 1,seed=0; 
+        int::start=1,end=3572420,seed=0; 
+        
+        date::start=2020-12-15,delta=7,seed=0; 
+        choices::list=A R,weights=99 1,seed=0; 
+        date::start=2020-10-10,delta=180,seed=0
+
+        ## OFFERS
+        26,259f4329-e6f4-490b-9a16-4106cf6a659e,05b6e6e3-07d4-4edc-9143-1193e6c3f339,2021-09-16 21:42:15,2021-07-05 22:38:42
+
+        carota -r 10000 -t "
+        int::start=1,end=28,seed=0; 
+        uuid::seed=0; 
+        uuid::seed=1; 
+        date; 
+        date
+        " -o o.csv
+        
+        # then we append some more random data
+        carota -r 6000000 -t "int::start=0,end=100,seed=5; uuid::seed=5; uuid::seed=6; date; date" -o o.csv --append
+        '''
+
+        # self.load holds the dictionaries of functions to be executed to load the database tables
+        self.load = {
+            'credits': {
+                'count': 10,
+                'tables': {
+                    'id': (fake.random_int, (1, 28)),
+                    'code': (fake.uuid4, ()),
+                    'channel': (simplefake.random_choice, ([('O', 9), ('R', 1)], )),
+                    'pid': (fake.random_int, (1, 3572420)),
+                    'end_date': (simplefake.date_time_between, ('2020-12-10', '2020-12-20')),
+                    'status': (simplefake.random_choice, ([('A', 99), ('R', 1)], )),
+                    'start_date': (simplefake.date_time_between, ('2020-07-01', '2021-01-31')),
+                }
+            },
+            'offers': {
+                'count': 10,
+                'tables': {
+                    'id': (fake.random_int, (1, 28)),
+                    'code': (fake.uuid4, ()),
+                    'token': (fake.uuid4, ()),
+                    'start_date': (simplefake.date_time_between, ()),
+                    'end_date': (simplefake.date_time_between, ('2020-07-01', '2021-01-31')),
+                }
+            }
+        }
+
+    def q1(self, conn: psycopg.Connection):
+
+        with conn.cursor() as cur:
+            stmt = """
+            SELECT DISTINCT c.id, c.code, c.channel, c.status, c.end_date, c.start_date
+            FROM credits AS c
+            WHERE c.status = 'A'
+                AND c.end_date >= '2020-11-20'
+                AND c.start_date <= '2020-11-20'
+                AND c.pid = '000000'
+
+            UNION
+
+            SELECT c.id, c.code, c.channel, c.status, c.end_date, c.start_date
+            FROM credits AS c, offers AS o
+            WHERE c.id = o.id
+                AND c.code = o.code
+                AND c.status = 'A'
+                AND c.end_date >= '2020-11-20'
+                AND c.start_date <= '2020-11-20'
+                AND o.token = 'c744250a-1377-4cdf-a1f4-5b85a4d29aaa';
+            """
+
+            cur.execute(stmt)
+
+    def q2(self, conn: psycopg.Connection):
+
+        with conn.cursor() as cur:
+            cur.execute("select * from bank where id = %s", (self.uuid,))
+            cur.fetchone()
+
+            # simulate microservice doing something
+            time.sleep(0.005)
+
+            stmt = """
+            SELECT c.id, c.code, c.channel, c.status, c.end_date, c.start_date
+            FROM credits AS c, offers AS o
+            WHERE c.id = o.id
+                AND c.code = o.code
+                AND c.status = 'A'
+                AND c.end_date >= '2020-11-20'
+                AND c.start_date <= '2020-11-20'
+                AND o.token = 'c744250a-1377-4cdf-a1f4-5b85a4d29aaa';
+            """
+            cur.execute(stmt, (self.uuid, self.event, self.lane, self.ts))
+
+
 class Bank:
 
     def __init__(self, parameters=[]):
-        # self.txns holds the list of transactions to be executed in sequence
-        self.txns = [self.txn0, self.txn1, self.txn2]
-        
+        # self.run holds the list of transactions to be executed in sequence
+        self.run = [self.txn0, self.txn1, self.txn2]
+
         # you can arbitrarely add any variables you want
         self.uuid = ''
         self.ts = ''
@@ -39,7 +197,7 @@ class Bank:
         self.uuid = uuid.uuid4()
         self.ts = datetime.datetime.now()
         self.event = 0
-        
+
         with conn.cursor() as cur:
             stmt = """insert into bank values (%s, %s, %s, %s); 
                     """
@@ -54,10 +212,10 @@ class Bank:
             with conn.cursor() as cur:
                 cur.execute("select * from bank where id = %s", (self.uuid,))
                 cur.fetchone()
-                
+
                 # simulate microservice doing something
                 time.sleep(0.005)
-                
+
                 stmt = """insert into bank values (%s, %s, %s, %s); 
                         """
                 cur.execute(stmt, (self.uuid, self.event, self.lane, self.ts))
@@ -65,15 +223,15 @@ class Bank:
     def txn2(self, conn: psycopg.Connection):
         self.ts = datetime.datetime.now()
         self.event = 2
-        
+
         with conn.transaction() as tx:
             with conn.cursor() as cur:
                 cur.execute("select * from bank where id = %s", (self.uuid,))
                 cur.fetchone()
-                
+
                 # simulate microservice doing something
                 time.sleep(0.010)
-                
+
                 stmt = """insert into bank values (%s, %s, %s, %s); 
                         """
                 cur.execute(stmt, (self.uuid, self.event, self.lane, self.ts))
@@ -83,12 +241,13 @@ class Balance:
 
     def __init__(self, parameters=[]):
         # create a list of transactions with as many elements as parameters
-        self.txns = [self.insert_balance for x in parameters]
+        self.run = [self.insert_balance for x in parameters]
         # create a continuous cycle from the parameters
         self.row_cycle = itertools.cycle(parameters)
 
         self.id = uuid.uuid4()
-        self.corr = ''.join(random.choice(string.ascii_uppercase) for x in range(4))
+        self.corr = ''.join(random.choice(string.ascii_uppercase)
+                            for x in range(4))
         self.system_dt = datetime.datetime.now()
         self.office = random.choice(
             ['LDN', 'TKO', 'NYC', 'SGP'])
@@ -130,132 +289,132 @@ class Balance:
         self.seg_earlyrel = round(random.random() * 100000, 2)
         self.factor = round(random.random() * 100000, 2)
         self.factor_dt = datetime.datetime.today()
-        
+
     def reset(self):
         return (
             # id
             uuid.uuid4(),
-            
+
             # corr
             ''.join(random.choice(string.ascii_uppercase) for x in range(4)),
-            
+
             # system_dt
             datetime.datetime.now(),
-            
+
             # office
             random.choice(['LDN', 'TKO', 'NYC', 'SGP']),
-            
+
             # acct_no
             str(random.randint(1000000, 12000000)),
-            
+
             # sub_acct_no
             self.sub_acct_no,
             # str(random.randint(1000000, 12000000)),
-            
+
             # acct_type
             random.choice(['ch', 'sv', 'mg', 'ln']),
-            
+
             # symbol
             ''.join(random.choice(string.ascii_uppercase) for x in range(25)),
-            
+
             # sym_no
             random.randint(1, 10000),
-            
+
             # price
             round(random.random() * 100000, 2),
-            
+
             # topen
             round(random.random() * 100000, 2),
-            
+
             # tclose
             round(random.random() * 100000, 2),
-            
+
             # tmktval
             round(random.random() * 100000, 2),
-            
+
             # sopen
             round(random.random() * 100000, 2),
-            
+
             # sclose
             round(random.random() * 100000, 2),
-            
+
             # smktval
             round(random.random() * 100000, 2),
-            
+
             # seg_orig
             round(random.random() * 100000, 2),
-            
+
             # seg_qty
             round(random.random() * 100000, 2),
-            
+
             # seg_fluid
             round(random.random() * 100000, 2),
-            
+
             # memo_rights
             round(random.random() * 100000, 2),
-            
+
             # memo_tender
             round(random.random() * 100000, 2),
-            
+
             # memo_splits
             round(random.random() * 100000, 2),
-            
+
             # memo_merger
             round(random.random() * 100000, 2),
-            
+
             # memo_acats
             self.memo_acats,
             # round(random.random() * 100000, 2),
-            
+
             # memo_transfer
             self.memo_transfer,
             # round(random.random() * 100000, 2),
-            
+
             # memo_safekeep
             round(random.random() * 100000, 2),
-            
+
             # ex_req_value
             round(random.random() * 100000, 2),
-            
+
             # ho_req_value
             round(random.random() * 100000, 2),
-            
+
             # ex_req_method
             self.ex_req_method,
             # ''.join(random.choice(string.ascii_uppercase) for x in range(10)),
-            
+
             # exec_symbol
             self.exec_symbol,
             # ''.join(random.choice(string.ascii_uppercase) for x in range(25)),
-            
+
             # g_tcost
             round(random.random() * 100000, 2),
-            
+
             # n_tcost
             round(random.random() * 100000, 2),
-            
+
             # memo_firmuse
             self.memo_firmuse,
             # round(random.random() * 100000, 2),
-            
+
             # fed_req_value
             round(random.random() * 100000, 2),
-            
+
             # hold_type
             random.choice(string.ascii_uppercase),
-            
+
             # seg_earlyrel
             self.seg_earlyrel,
             # round(random.random() * 100000, 2),
-            
+
             # factor
             self.factor,
             # round(random.random() * 100000, 2),
-            
+
             # factor_dt
             datetime.datetime.today()
         )
-        
+
     def init(self, conn: psycopg.Connection):
         with conn.cursor() as cur:
             ddl = """

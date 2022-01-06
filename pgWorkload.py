@@ -15,10 +15,16 @@ import tabulate
 import time
 import urllib
 import importlib
+import http.server
+import socketserver
+import threading
 
 DEFAULT_SLEEP = 5
 
-
+class quietServer(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, format, *args):
+        pass
+    
 class Stats:
     def __init__(self, frequency):
         self.cumulative_counts = {}
@@ -120,7 +126,7 @@ def main():
     logging.info("dburl: '%s'" % args.dburl)
 
     if args.init:
-        init()
+        init(workload(args.parameters))
         sys.exit(0)
 
     q = mp.Queue(maxsize=1000)
@@ -181,6 +187,13 @@ def signal_handler(sig, frame):
     logging.info("Printing final stats")
     stats.print_stats()
     sys.exit(0)
+
+
+ 
+def httpserver(path, port=8000):
+    os.chdir(path)
+    with socketserver.TCPServer(("", 3000), quietServer) as httpd:
+        httpd.serve_forever()
 
 
 def set_query_parameter(url, param_name, param_value):
@@ -263,11 +276,22 @@ def setup_parser():
 
 
 def run_transaction(conn, op, max_retries=3):
+    """
+    Execute the operation *op(conn)* retrying serialization failure.
+
+    If the database returns an error asking to retry the transaction, retry it
+    *max_retries* times before giving up (and propagate it).
+    """
     for retry in range(1, max_retries + 1):
         try:
             op(conn)
+            # If we reach this point, we were able to commit, so we break
+            # from the retry loop.
             return
         except psycopg.errors.SerializationFailure as e:
+            # This is a retry error, so we roll back the current
+            # transaction and sleep for a bit before retrying. The
+            # sleep time increases for each failed transaction.
             logging.debug("psycopg.SerializationFailure:: %s", e)
             conn.rollback()
             time.sleep((2 ** retry) * 0.1 * (random.random() + 0.5))
@@ -278,12 +302,17 @@ def run_transaction(conn, op, max_retries=3):
         f"Transaction did not succeed after {max_retries} retries")
 
 
-def init():
+def init(workload: object):
     logging.debug("Running init script")
 
+    ###############################
+    # PART 1 - CREATE THER SCHEMA #
+    ###############################
+    # create the database according to the value passed in --init-db,
+    # or use the workload name otherwise.
+    # drop any existant database if --init-drop is True
     try:
         with psycopg.connect(args.dburl, autocommit=True) as conn:
-
             if args.init_db == '':
                 args.init_db = os.path.splitext(
                     os.path.basename(args.workload))[0].lower()
@@ -294,33 +323,105 @@ def init():
                         psycopg.sql.Identifier(args.init_db)))
                 cur.execute(psycopg.sql.SQL("CREATE DATABASE IF NOT EXISTS {};").format(
                     psycopg.sql.Identifier(args.init_db)))
+    except Exception as e:
+        logging.error("Exception: %s" % (e))
 
-        # craft the new dburl
-        scheme, netloc, path, query_string, fragment = urllib.parse.urlsplit(
-            args.dburl)
-        path = '/' + args.init_db
-        args.dburl = urllib.parse.urlunsplit(
-            (scheme, netloc, path, query_string, fragment))
+    # craft the new dburl
+    scheme, netloc, path, query_string, fragment = urllib.parse.urlsplit(
+        args.dburl)
+    path = '/' + args.init_db
+    args.dburl = urllib.parse.urlunsplit(
+        (scheme, netloc, path, query_string, fragment))
 
-        # now that we've created the database, connect to that database
+    # now that we've created the database, connect to that database
+    # and load the schema, which can be in a <workload>.sql file
+    # or in the self.schema variable of the workload
+    # find if the .sql file exists
+    schema_sql_file = os.path.join(os.path.dirname(args.workload), os.path.splitext(
+        os.path.basename(args.workload))[0].lower() + '.sql')
+
+    if os.path.exists(schema_sql_file):
+        logging.debug('Found SQL file %s' % schema_sql_file)
+        with open(schema_sql_file, 'r') as f:
+            schema = f.read()
+    else:
+        logging.debug(
+            'File %s not found. Loading schema from the \'schema\' variable', schema_sql_file)
+        try:
+            schema = workload.schema
+        except AttributeError as e:
+            logging.error(
+                '%s. Make sure self.schema is a valid variable in __init__', e)
+            sys.exit(1)
+    try:
         with psycopg.connect(args.dburl, autocommit=True) as conn:
-            # find if the .sql file exists
-            ddl_sql_file = os.path.join(os.path.dirname(args.workload), os.path.splitext(
-                os.path.basename(args.workload))[0].lower() + '.sql')
-
-            if os.path.exists(ddl_sql_file):
-                logging.debug('Found SQL file %s' % ddl_sql_file)
-                with open(ddl_sql_file, 'r') as f:
-                    with conn.cursor() as cur:
-                        cur.execute(psycopg.sql.SQL(f.read()))
-
-        # run_transaction(conn, lambda conn: txn(conn))
-
-        logging.info(
-            "Init completed. Please update your database connection url to '%s'" % args.dburl)
+            with conn.cursor() as cur:
+                cur.execute(psycopg.sql.SQL(schema))
+                logging.debug('created schema')
 
     except Exception as e:
         logging.error("Exception: %s" % (e))
+
+    ##############################
+    # PART 2 - GENERATE THE DATA #
+    ##############################
+
+    try:
+        load: dict = workload.load
+    except AttributeError as e:
+        logging.error(
+            '%s. Make sure self.load is a valid dict variable in __init__', e)
+        sys.exit(1)
+
+    csv_dir = os.path.join(os.path.dirname(args.workload), os.path.splitext(
+        os.path.basename(args.workload))[0].lower())
+
+    if not os.path.isdir(csv_dir):
+        os.mkdir(csv_dir)
+
+    l = []
+    row = []
+    for k, v in load.items():
+        csv_file = os.path.join(csv_dir, k + '.csv')
+        count: int = v['count']
+        tables: dict = v['tables']
+        for _ in range(count):
+            row = [str(func[0](*func[1])) for func in tables.values()]
+
+            l.append(','.join(row))
+
+        with open(csv_file, 'w') as f:
+            f.write('\n'.join(l) + '\n')
+
+        l = []
+
+    ############################
+    # PART 3 - IMPORT THE DATA #
+    ############################
+
+    # Start the http server in a new thread
+    daemon = threading.Thread(name='daemon_server',
+                              target=httpserver,
+                              args=(csv_dir, 3000))
+
+    # Set as a daemon so it will be killed once the main thread is dead.
+    daemon.setDaemon(True)
+    daemon.start()
+
+    try:
+        with psycopg.connect(args.dburl, autocommit=True) as conn:
+            with conn.cursor() as cur:
+                for k in load.keys():
+                    stmt = ("IMPORT INTO %s CSV DATA ('http://localhost:3000/%s.csv')" % (k, k))
+                    logging.debug('Importing file %s.csv' % (k))
+                    cur.execute(stmt)
+                    
+
+    except Exception as e:
+        logging.error("Exception: %s" % (e))
+    
+    logging.info(
+        "Init completed. Please update your database connection url to '%s'" % args.dburl)
 
 
 def worker(q: mp.Queue, kill_q: mp.JoinableQueue, dburl: str, workload: object, parameters: list, iterations: int, duration: int, conn_duration: int):
@@ -345,8 +446,9 @@ def worker(q: mp.Queue, kill_q: mp.JoinableQueue, dburl: str, workload: object, 
             with psycopg.connect(dburl, autocommit=True) as conn:
                 logging.debug("connection started")
                 while True:
+
+                    # listen for termination messages (poison pill)
                     try:
-                        # listen for termination messages
                         kill_q.get(block=False)
                         logging.debug("Poison pill received")
                         kill_q.task_done()
@@ -358,18 +460,20 @@ def worker(q: mp.Queue, kill_q: mp.JoinableQueue, dburl: str, workload: object, 
                     if (iterations > 0 and c >= iterations) or \
                             (duration > 0 and time.time() >= endtime):
                         logging.debug("Task completed!")
-                        # send poison pill
+
+                        # send task completed notification (a None)
                         q.put(None)
                         return
 
-                    # break if limit for connection duration has been reached
+                    # break from the inner loop if limit for connection duration has been reached
+                    # this will cause for the outer loop to reset the timer and restart with a new conn
                     if conn_duration > 0 and time.time() >= conn_endtime:
                         logging.debug(
                             "conn_duration reached, will reset the connection.")
                         break
 
                     cycle_start = time.time()
-                    for txn in w.txns:
+                    for txn in w.run:
                         start = time.time()
                         run_transaction(conn, lambda conn: txn(conn))
                         q.put((txn.__name__, time.time() - start))
@@ -377,6 +481,7 @@ def worker(q: mp.Queue, kill_q: mp.JoinableQueue, dburl: str, workload: object, 
                     c += 1
                     q.put(('__cycle__', time.time() - cycle_start))
 
+        # catch any error, pass that error to the MainProcess
         except psycopg.errors.UndefinedTable as e:
             q.put(e)
             return
@@ -391,13 +496,12 @@ def worker(q: mp.Queue, kill_q: mp.JoinableQueue, dburl: str, workload: object, 
 args = setup_parser()
 
 # setup global logging
-numeric_level = getattr(logging, args.loglevel.upper(), None)
-if not isinstance(numeric_level, int):
-    raise ValueError('Invalid log level: %s' % args.loglevel)
-
-logging.basicConfig(level=numeric_level,
+logging.basicConfig(level=getattr(logging, args.loglevel.upper(), logging.INFO),
                     format='%(asctime)s [%(levelname)s] (%(processName)s %(process)d) %(message)s')
 
+# disable faker logging
+logging.getLogger('faker').setLevel(logging.ERROR)
+logging.getLogger("http.server").setLevel(logging.WARNING)
 
 if __name__ == '__main__':
     main()
