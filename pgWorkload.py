@@ -19,12 +19,17 @@ import http.server
 import socketserver
 import threading
 
+
 DEFAULT_SLEEP = 5
 
+
 class quietServer(http.server.SimpleHTTPRequestHandler):
+    """SimpleHTTPRequestHandler that doesn't output any log
+    """
     def log_message(self, format, *args):
         pass
-    
+
+
 class Stats:
     def __init__(self, frequency):
         self.cumulative_counts = {}
@@ -189,12 +194,20 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
- 
 def httpserver(path, port=8000):
-    os.chdir(path)
-    with socketserver.TCPServer(("", 3000), quietServer) as httpd:
-        httpd.serve_forever()
+    """Create simple http server
 
+    Args:
+        path (string): The directory to serve files from
+        port (int, optional): The http server listening port. Defaults to 8000.
+    """
+    os.chdir(path)
+    try:
+        with socketserver.TCPServer(("", 3000), quietServer) as httpd:
+            httpd.serve_forever()
+    except OSError as e:
+        logging.error(e)
+        return
 
 def set_query_parameter(url, param_name, param_value):
     """convenience function to add a query parameter string such as '&application_name=myapp' to a url
@@ -218,8 +231,8 @@ def import_class_at_runtime(module: str, class_name: str):
     """Imports a class with the same name of the module unless class_name is passed.
 
     Args:
-        module (string): the path of the module to import, eg: workloads/bank.py
-        class_name (string): the name of the class to import, eg: bank2
+        module (string): the path of the module to import
+        class_name (string): the name of the class to import
 
     Returns:
         class: the imported class
@@ -231,11 +244,11 @@ def import_class_at_runtime(module: str, class_name: str):
     try:
         pkg = importlib.import_module(module)
         return getattr(pkg, class_name)
-    except AttributeError:
-        logging.error("could not import %s" % class_name)
+    except AttributeError as e:
+        logging.error(e)
         sys.exit(1)
-    except ImportError:
-        logging.error("could not import %s" % class_name)
+    except ImportError as e:
+        logging.error(e)
         sys.exit(1)
 
 
@@ -305,9 +318,9 @@ def run_transaction(conn, op, max_retries=3):
 def init(workload: object):
     logging.debug("Running init script")
 
-    ###############################
-    # PART 1 - CREATE THER SCHEMA #
-    ###############################
+    ##############################
+    # PART 1 - CREATE THE SCHEMA #
+    ##############################
     # create the database according to the value passed in --init-db,
     # or use the workload name otherwise.
     # drop any existant database if --init-drop is True
@@ -321,8 +334,12 @@ def init(workload: object):
                 if args.init_drop:
                     cur.execute(psycopg.sql.SQL("DROP DATABASE IF EXISTS {} CASCADE;").format(
                         psycopg.sql.Identifier(args.init_db)))
+                    
                 cur.execute(psycopg.sql.SQL("CREATE DATABASE IF NOT EXISTS {};").format(
                     psycopg.sql.Identifier(args.init_db)))
+
+                logging.info("Database '%s' created." % args.init_db)
+
     except Exception as e:
         logging.error("Exception: %s" % (e))
 
@@ -335,18 +352,19 @@ def init(workload: object):
 
     # now that we've created the database, connect to that database
     # and load the schema, which can be in a <workload>.sql file
-    # or in the self.schema variable of the workload
+    # or in the self.schema variable of the workload.
+    
     # find if the .sql file exists
     schema_sql_file = os.path.join(os.path.dirname(args.workload), os.path.splitext(
         os.path.basename(args.workload))[0].lower() + '.sql')
 
     if os.path.exists(schema_sql_file):
-        logging.debug('Found SQL file %s' % schema_sql_file)
+        logging.debug('Found schema SQL file %s' % schema_sql_file)
         with open(schema_sql_file, 'r') as f:
             schema = f.read()
     else:
         logging.debug(
-            'File %s not found. Loading schema from the \'schema\' variable', schema_sql_file)
+            'Schema file %s not found. Loading schema from the \'schema\' variable', schema_sql_file)
         try:
             schema = workload.schema
         except AttributeError as e:
@@ -357,75 +375,95 @@ def init(workload: object):
         with psycopg.connect(args.dburl, autocommit=True) as conn:
             with conn.cursor() as cur:
                 cur.execute(psycopg.sql.SQL(schema))
-                logging.debug('created schema')
+
+            logging.info('Created workload schema')
 
     except Exception as e:
         logging.error("Exception: %s" % (e))
+        sys.exit(1)
 
     ##############################
     # PART 2 - GENERATE THE DATA #
     ##############################
 
+    # description of how to generate the data is in workload variable self.load
     try:
         load: dict = workload.load
     except AttributeError as e:
-        logging.error(
-            '%s. Make sure self.load is a valid dict variable in __init__', e)
-        sys.exit(1)
+        logging.warning(
+            '%s. Make sure self.load is a valid dict variable in __init__. Setting \'load\' to an empty dict', e)
+        load: dict = {}
 
+    # create a directory to put the csv files
     csv_dir = os.path.join(os.path.dirname(args.workload), os.path.splitext(
         os.path.basename(args.workload))[0].lower())
 
     if not os.path.isdir(csv_dir):
         os.mkdir(csv_dir)
 
+    # generate the data by parsing the load variable
     l = []
     row = []
+
     for k, v in load.items():
         csv_file = os.path.join(csv_dir, k + '.csv')
+        logging.info("Generating dataset for table '%s'" % k)
         count: int = v['count']
         tables: dict = v['tables']
+        
         for _ in range(count):
-            row = [str(func[0](*func[1])) for func in tables.values()]
-
+            # row = [str(func[0](*func[1])) for func in tables.values()]
+            row = [str(next(x)) for x in tables.values() ]
+            # for i in tables.values():
+            #     print(i)
+            
             l.append(','.join(row))
 
         with open(csv_file, 'w') as f:
             f.write('\n'.join(l) + '\n')
 
+        logging.debug("Created file %s.csv" % k)
         l = []
 
     ############################
     # PART 3 - IMPORT THE DATA #
     ############################
 
+    # we import the data using the IMPORT INTO function in CRDB.
+    # The files have to be served by a HTTP server
+    
     # Start the http server in a new thread
-    daemon = threading.Thread(name='daemon_server',
-                              target=httpserver,
-                              args=(csv_dir, 3000))
+    threading.Thread(name='httpserver', target=httpserver, args=(csv_dir, 3000), daemon=True).start()
 
-    # Set as a daemon so it will be killed once the main thread is dead.
-    daemon.setDaemon(True)
-    daemon.start()
-
+    # import each file
     try:
         with psycopg.connect(args.dburl, autocommit=True) as conn:
             with conn.cursor() as cur:
                 for k in load.keys():
-                    stmt = ("IMPORT INTO %s CSV DATA ('http://localhost:3000/%s.csv')" % (k, k))
-                    logging.debug('Importing file %s.csv' % (k))
-                    cur.execute(stmt)
+                    stmt = (
+                        "IMPORT INTO %s CSV DATA ('http://localhost:3000/%s.csv');" % (k, k))
                     
-
+                    logging.info('Importing file %s.csv' % (k))
+                    cur.execute(stmt)
+    except psycopg.Error as e:
+        logging.error("psycopg.Error: %s" % e)
+        sys.exit(1)
     except Exception as e:
+        logging.error(type(e))
         logging.error("Exception: %s" % (e))
+        sys.exit(1)
+
+    ##############################
+    # PART 4 - RUN WORKLOAD INIT #
+    ##############################
+    workload.init()
     
     logging.info(
         "Init completed. Please update your database connection url to '%s'" % args.dburl)
 
 
 def worker(q: mp.Queue, kill_q: mp.JoinableQueue, dburl: str, workload: object, parameters: list, iterations: int, duration: int, conn_duration: int):
-    logging.debug("worker created")
+    logging.debug("Worker created")
 
     # capture KeyboardInterrupt and do nothing
     signal.signal(signal.SIGINT, signal.SIG_IGN)
@@ -444,7 +482,7 @@ def worker(q: mp.Queue, kill_q: mp.JoinableQueue, dburl: str, workload: object, 
 
         try:
             with psycopg.connect(dburl, autocommit=True) as conn:
-                logging.debug("connection started")
+                logging.debug("Connection started")
                 while True:
 
                     # listen for termination messages (poison pill)
@@ -473,7 +511,7 @@ def worker(q: mp.Queue, kill_q: mp.JoinableQueue, dburl: str, workload: object, 
                         break
 
                     cycle_start = time.time()
-                    for txn in w.run:
+                    for txn in w.run():
                         start = time.time()
                         run_transaction(conn, lambda conn: txn(conn))
                         q.put((txn.__name__, time.time() - start))
@@ -501,7 +539,7 @@ logging.basicConfig(level=getattr(logging, args.loglevel.upper(), logging.INFO),
 
 # disable faker logging
 logging.getLogger('faker').setLevel(logging.ERROR)
-logging.getLogger("http.server").setLevel(logging.WARNING)
+
 
 if __name__ == '__main__':
     main()
