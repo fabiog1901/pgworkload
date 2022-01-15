@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import argparse
+import datetime
 import logging
 import multiprocessing as mp
 import numpy
@@ -18,14 +19,20 @@ import importlib
 import http.server
 import socketserver
 import threading
+import numpy as np
+import pandas as pd
+
+from play import SimpleFaker
 
 
 DEFAULT_SLEEP = 5
+CSV_MAX_ROWS = 1000000
 
 
 class quietServer(http.server.SimpleHTTPRequestHandler):
     """SimpleHTTPRequestHandler that doesn't output any log
     """
+
     def log_message(self, format, *args):
         pass
 
@@ -126,6 +133,10 @@ def main():
     if args.iterations > 0:
         args.iterations = int(args.iterations / args.concurrency)
 
+    if args.init_db == '':
+        args.init_db = os.path.splitext(
+            os.path.basename(args.workload))[0].lower()
+                
     args.dburl = set_query_parameter(
         args.dburl, "application_name", args.app_name if args.app_name else workload.__name__)
     logging.info("dburl: '%s'" % args.dburl)
@@ -209,6 +220,7 @@ def httpserver(path, port=8000):
         logging.error(e)
         return
 
+
 def set_query_parameter(url, param_name, param_value):
     """convenience function to add a query parameter string such as '&application_name=myapp' to a url
 
@@ -272,7 +284,15 @@ def setup_parser():
                         help="On initialization, drop the database if it exists")
     parser.add_argument('--init-db', default='', dest='init_db', type=str,
                         help="On initialization, override the default db name. Defaults to value passed in --workload-class or, if absent, --workload")
-
+    parser.add_argument('--init-delimiter', default='\t', dest='delimiter',
+                        help="On initialization, the delimeter char to use for the CSV files. Defaults = '\t'")
+    parser.add_argument('--init-skip-create-schema', default=False, dest='init_skip_create_schema', action=argparse.BooleanOptionalAction,
+                        help="On initialization, don't run the schema creation script")
+    parser.add_argument('--init-skip-data-generation', default=False, dest='init_skip_data_generation', action=argparse.BooleanOptionalAction,
+                        help="On initialization, don't generate the CSV data files")
+    parser.add_argument('--init-skip-data-import', default=False, dest='init_skip_data_import', action=argparse.BooleanOptionalAction,
+                        help="On initialization, don't import")
+    # other params
     parser.add_argument('--log-level', dest='loglevel', default='info',
                         help='The log level ([debug|info|warning|error]). (default = info)')
     parser.add_argument('--conn-duration', dest='conn_duration', type=int, default=0,
@@ -285,6 +305,7 @@ def setup_parser():
                         help="The workload class module, if different from the module basename")
     parser.add_argument('--parameters', dest='parameters', nargs='*', default=[],
                         help='parameters to pass to Workload at runtime')
+    
     return parser.parse_args()
 
 
@@ -315,48 +336,111 @@ def run_transaction(conn, op, max_retries=3):
         f"Transaction did not succeed after {max_retries} retries")
 
 
-def init(workload: object):
-    logging.debug("Running init script")
+def get_bitgenerators(obj, seed: int, spawn_count: int):
+    bitgens = [np.random.PCG64(x) for x in np.random.SeedSequence(
+        seed).spawn(spawn_count)]
+    return [obj.get_copy(x) for x in bitgens]
 
-    ##############################
-    # PART 1 - CREATE THE SCHEMA #
-    ##############################
+
+def get_new_sequence(obj, start, count, num_procs):
+    div = int(count/num_procs)
+    return [SimpleFaker.Sequence(div * x + start) for x in range(num_procs)]
+
+
+def get_csv_files_dirname():
+    return os.path.join(os.path.dirname(args.workload), os.path.splitext(
+        os.path.basename(args.workload))[0].lower())
+
+
+def get_workload_load(workload: object):
+    try:
+        return workload.load
+    except AttributeError as e:
+        logging.warning(
+            '%s. Make sure self.load is a valid dict variable in __init__. Setting \'load\' to an empty dict', e)
+        return {}
+
+def get_new_dburl(dburl: str, db_name: str):
+    """Return the dburl with the database name replaced.
+    
+    Args:
+        dburl (str): the database connection string
+        db_name (str): the new database name
+
+    Returns:
+        str: the new connection string
+    """
+    # craft the new dburl
+    scheme, netloc, path, query_string, fragment = urllib.parse.urlsplit(dburl)
+    path = '/' + db_name
+    return urllib.parse.urlunsplit(
+        (scheme, netloc, path, query_string, fragment))
+
+def init(workload: object):
+    logging.debug("Running init")
+
+    # PART 1 - CREATE THE SCHEMA
+    if args.init_skip_create_schema:
+        logging.debug("Skipping init_create_schema")
+    else:
+        init_create_schema(workload, args.dburl, args.init_drop, args.init_db, args.workload)
+
+    # PART 2 - GENERATE THE DATA
+    if args.init_skip_data_generation:
+        logging.debug("Skipping init_generate_data")
+    else:
+        init_generate_data(workload, args.concurrency)
+
+    # PART 3 - IMPORT THE DATA
+    dburl = get_new_dburl(args.dburl, args.init_db)
+    if args.init_skip_data_import:
+        logging.debug("Skipping init_import_data")
+    else:
+        init_import_data(workload, dburl)
+
+    # PART 4 - RUN WORKLOAD INIT
+    try:
+        logging.debug("Running workload.init()")
+        workload.init()
+    except Exception as e:
+        logging.error(e)
+        sys.exit(1)
+
+    logging.info(
+        "Init completed. Please update your database connection url to '%s'" % dburl)
+
+
+def init_create_schema(workload: object, dburl: str, drop: bool, db_name: str, workload_path: str):
     # create the database according to the value passed in --init-db,
     # or use the workload name otherwise.
     # drop any existant database if --init-drop is True
+    logging.debug("Running init_create_schema")
     try:
-        with psycopg.connect(args.dburl, autocommit=True) as conn:
-            if args.init_db == '':
-                args.init_db = os.path.splitext(
-                    os.path.basename(args.workload))[0].lower()
+        with psycopg.connect(dburl, autocommit=True) as conn:
+            
 
             with conn.cursor() as cur:
-                if args.init_drop:
+                if drop:
                     cur.execute(psycopg.sql.SQL("DROP DATABASE IF EXISTS {} CASCADE;").format(
-                        psycopg.sql.Identifier(args.init_db)))
-                    
-                cur.execute(psycopg.sql.SQL("CREATE DATABASE IF NOT EXISTS {};").format(
-                    psycopg.sql.Identifier(args.init_db)))
+                        psycopg.sql.Identifier(db_name)))
 
-                logging.info("Database '%s' created." % args.init_db)
+                cur.execute(psycopg.sql.SQL("CREATE DATABASE IF NOT EXISTS {};").format(
+                    psycopg.sql.Identifier(db_name)))
+
+                logging.info("Database '%s' created." % db_name)
 
     except Exception as e:
         logging.error("Exception: %s" % (e))
 
-    # craft the new dburl
-    scheme, netloc, path, query_string, fragment = urllib.parse.urlsplit(
-        args.dburl)
-    path = '/' + args.init_db
-    args.dburl = urllib.parse.urlunsplit(
-        (scheme, netloc, path, query_string, fragment))
-
+    dburl = get_new_dburl(dburl, db_name)
+        
     # now that we've created the database, connect to that database
     # and load the schema, which can be in a <workload>.sql file
     # or in the self.schema variable of the workload.
-    
+
     # find if the .sql file exists
-    schema_sql_file = os.path.join(os.path.dirname(args.workload), os.path.splitext(
-        os.path.basename(args.workload))[0].lower() + '.sql')
+    schema_sql_file = os.path.join(os.path.dirname(workload_path), os.path.splitext(
+        os.path.basename(workload_path))[0].lower() + '.sql')
 
     if os.path.exists(schema_sql_file):
         logging.debug('Found schema SQL file %s' % schema_sql_file)
@@ -372,7 +456,7 @@ def init(workload: object):
                 '%s. Make sure self.schema is a valid variable in __init__', e)
             sys.exit(1)
     try:
-        with psycopg.connect(args.dburl, autocommit=True) as conn:
+        with psycopg.connect(dburl, autocommit=True) as conn:
             with conn.cursor() as cur:
                 cur.execute(psycopg.sql.SQL(schema))
 
@@ -382,69 +466,86 @@ def init(workload: object):
         logging.error("Exception: %s" % (e))
         sys.exit(1)
 
-    ##############################
-    # PART 2 - GENERATE THE DATA #
-    ##############################
 
+def init_generate_data(workload: object, exec_threads: int):
+    logging.debug("Running init_generate_data")
     # description of how to generate the data is in workload variable self.load
-    try:
-        load: dict = workload.load
-    except AttributeError as e:
-        logging.warning(
-            '%s. Make sure self.load is a valid dict variable in __init__. Setting \'load\' to an empty dict', e)
-        load: dict = {}
+    load = get_workload_load(workload)
 
-    # create a directory to put the csv files
-    csv_dir = os.path.join(os.path.dirname(args.workload), os.path.splitext(
-        os.path.basename(args.workload))[0].lower())
+    # get the dirname to put the csv files
+    csv_dir = get_csv_files_dirname()
 
-    if not os.path.isdir(csv_dir):
-        os.mkdir(csv_dir)
+    # backup the current directory as to not override
+    if os.path.isdir(csv_dir):
+        os.rename(csv_dir, csv_dir + '.' +
+                  datetime.datetime.utcnow().strftime('%Y%m%d-%H%M%S'))
+
+    # create new directory
+    os.mkdir(csv_dir)
 
     # generate the data by parsing the load variable
-    l = []
-    row = []
+    for table_name, table_details in load.items():
+        csv_file_basename = os.path.join(csv_dir, table_name)
+        logging.info("Generating dataset for table '%s'" % table_name)
 
-    for k, v in load.items():
-        csv_file = os.path.join(csv_dir, k + '.csv')
-        logging.info("Generating dataset for table '%s'" % k)
-        count: int = v['count']
-        tables: dict = v['tables']
-        
-        for _ in range(count):
-            # row = [str(func[0](*func[1])) for func in tables.values()]
-            row = [str(next(x)) for x in tables.values() ]
-            # for i in tables.values():
-            #     print(i)
-            
-            l.append(','.join(row))
+        for item in table_details:
+            col_names = list(item['tables'].keys())
+            sort_by = item.get('sort-by', [])
+            for col, obj in item['tables'].items():
 
-        with open(csv_file, 'w') as f:
-            f.write('\n'.join(l) + '\n')
+                if isinstance(obj, SimpleFaker.Sequence):
+                    item['tables'][col] = get_new_sequence(
+                        obj, obj.start, item['count'], exec_threads)
+                else:
+                    item['tables'][col] = get_bitgenerators(
+                        obj, obj.seed, exec_threads)
 
-        logging.debug("Created file %s.csv" % k)
-        l = []
+            write_csvs(item, csv_file_basename + '.' +
+                       str(table_details.index(item)), col_names, sort_by)
 
-    ############################
-    # PART 3 - IMPORT THE DATA #
-    ############################
 
-    # we import the data using the IMPORT INTO function in CRDB.
-    # The files have to be served by a HTTP server
-    
+def init_import_data(workload, dburl):
+    logging.debug("Running init_import_data")
+    csv_dir = get_csv_files_dirname()
+    load = get_workload_load(workload)
     # Start the http server in a new thread
-    threading.Thread(name='httpserver', target=httpserver, args=(csv_dir, 3000), daemon=True).start()
+    threading.Thread(name='httpserver', target=httpserver,
+                     args=(csv_dir, 3000), daemon=True).start()
 
-    # import each file
+    # import each file in batches of <number-of-nodes-in-the-cluster>
+    # the httpserver has changed the current directory to 'csv_dir'
+    csv_files = os.listdir()
+
     try:
-        with psycopg.connect(args.dburl, autocommit=True) as conn:
+        with psycopg.connect(dburl, autocommit=True) as conn:
             with conn.cursor() as cur:
-                for k in load.keys():
-                    stmt = (
-                        "IMPORT INTO %s CSV DATA ('http://localhost:3000/%s.csv');" % (k, k))
-                    
-                    logging.info('Importing file %s.csv' % (k))
-                    cur.execute(stmt)
+                # fetch the count of nodes that are part of the cluster
+                cur.execute("select count(*) from crdb_internal.gossip_nodes;")
+                node_count = cur.fetchone()[0]
+
+                for table in load.keys():
+
+                    # this lists all files related to a table
+                    table_csv_files = [
+                        x for x in csv_files if x.startswith(table)]
+
+                    # chunked list is a list of list, where each item is a list of 'node_count' size.
+                    chunked_list = [table_csv_files[i:i+node_count]
+                                    for i in range(0, len(table_csv_files), node_count)]
+
+                    # we import only 'node_count' items at a time, as
+                    # we parallelize imports
+                    for chunk in chunked_list:
+                        csv_data = ''
+                        for x in chunk:
+                            csv_data += "'http://localhost:3000/%s'," % x
+
+                        stmt = (
+                            "IMPORT INTO %s CSV DATA (%s) WITH delimiter = e'\t';" % (table, csv_data[:-1]))
+
+                        logging.debug('Importing files: %s' % str(chunk))
+                        cur.execute(stmt)
+
     except psycopg.Error as e:
         logging.error("psycopg.Error: %s" % e)
         sys.exit(1)
@@ -453,16 +554,69 @@ def init(workload: object):
         logging.error("Exception: %s" % (e))
         sys.exit(1)
 
-    ##############################
-    # PART 4 - RUN WORKLOAD INIT #
-    ##############################
-    workload.init()
-    
-    logging.info(
-        "Init completed. Please update your database connection url to '%s'" % args.dburl)
+
+def load_worker(generators: tuple, iterations: int, basename: str, col_names: list, sort_by: list, separator: str):
+    if iterations > CSV_MAX_ROWS:
+        count = int(iterations/CSV_MAX_ROWS)
+        rem = iterations % CSV_MAX_ROWS
+        iterations = CSV_MAX_ROWS
+    else:
+        count = 1
+        rem = 0
+
+    for x in range(count):
+        pd.DataFrame(
+            [row for row in [[next(x) for x in generators]
+                             for _ in range(iterations)]],
+            columns=col_names)\
+            .sort_values(by=sort_by)\
+            .to_csv(basename + '_' + str(x) + '.csv', sep=separator, header=False, index=False)
+
+    # remaining rows, if any
+    if rem > 0:
+        pd.DataFrame(
+            [row for row in [[next(x) for x in generators]
+                             for _ in range(rem)]],
+            columns=col_names)\
+            .sort_values(by=sort_by)\
+            .to_csv(basename + '_' + str(count) + '.csv', sep=separator, header=False, index=False)
 
 
-def worker(q: mp.Queue, kill_q: mp.JoinableQueue, dburl: str, workload: object, parameters: list, iterations: int, duration: int, conn_duration: int):
+def rows_in_chunks(count: int, concurrency: int):
+    rows_to_process = int(count/concurrency)
+    rows_left_over = count % concurrency
+
+    if rows_left_over == 0:
+        return [rows_to_process] * concurrency
+    else:
+        l = [rows_to_process] * (concurrency-1)
+        l.append(rows_to_process + rows_left_over)
+        return l
+
+
+def write_csvs(obj, basename, col_names, sort_by):
+    logging.debug('Writing CSV files...')
+
+    # create a zip object so that generators are paired together
+    z = zip(*[x for x in obj['tables'].values()])
+
+    rows_chunk = rows_in_chunks(obj['count'], args.concurrency)
+    procs = []
+    for i, rows in enumerate(rows_chunk):
+        output_file = basename + '_' + str(i)
+
+        p = mp.Process(target=load_worker, args=(
+            next(z), rows, output_file, col_names, sort_by, args.delimiter))
+        p.start()
+        procs.append(p)
+
+    # wait for all workers to exit
+    for p in procs:
+        p.join()
+
+
+def worker(q: mp.Queue, kill_q: mp.JoinableQueue, dburl: str,
+           workload: object, parameters: list, iterations: int, duration: int, conn_duration: int):
     logging.debug("Worker created")
 
     # capture KeyboardInterrupt and do nothing
@@ -536,10 +690,6 @@ args = setup_parser()
 # setup global logging
 logging.basicConfig(level=getattr(logging, args.loglevel.upper(), logging.INFO),
                     format='%(asctime)s [%(levelname)s] (%(processName)s %(process)d) %(message)s')
-
-# disable faker logging
-logging.getLogger('faker').setLevel(logging.ERROR)
-
 
 if __name__ == '__main__':
     main()

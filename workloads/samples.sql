@@ -83,3 +83,6 @@ CREATE TABLE IF NOT EXISTS balance (
     ),
     INDEX balance_i3 (sym_no ASC, system_dt ASC)
 );
+
+
+

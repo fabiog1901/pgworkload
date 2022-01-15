@@ -1,0 +1,27 @@
+credits:
+  - count: 2000
+    sort-by:
+      - id
+    tables:
+      id: 'Integer(1, 28, seed=0'
+      code: UUIDv4(seed=0
+      channel: 'Choice(["O", "R"], weights=[9, 1], seed=0'
+      pid: 'Integer(1, 3572420, seed=0'
+      end_date: 'Date("2020-12-10", "2020-12-20", seed=0'
+      status: 'Choice(["A", "R"], [99, 1], seed=0'
+      start_date: 'Date("2020-04-10", "2021-06-10", seed=0'
+offers:
+  - count: 2000
+    tables:
+      id: 'Integer(1, 28, seed=0'
+      code: UUIDv4(seed=0
+      token: UUIDv4(seed=1
+      start_date: 'Date''2020-04-10'', ''2021-06-10'', seed=2'
+      end_date: 'Date(''2020-04-10'', ''2021-06-10'', seed=3'
+  - count: 2000
+    tables:
+      id: 'Integer(1, 28, seed=5)'
+      code: UUIDv4(seed=5)
+      token: UUIDv4(seed=6)
+      start_date: 'Date(''2020-04-10'', ''2021-06-10'', seed=5)'
+      end_date: 'Date(''2020-04-10'', ''2021-06-10'', seed=6)'

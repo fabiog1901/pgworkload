@@ -7,67 +7,66 @@ import time
 import uuid
 from play import SimpleFaker
 
-global simplefake
-simplefake = SimpleFaker()
+global simplefaker
+simplefaker = SimpleFaker()
+
 
 class Bank:
 
-    def __init__(self, parameters=[]):
+    def __init__(self, parameters: list = [100]):
 
         self.parameters = parameters
-        self.read_pct = float(self.parameters[0]) / 100
-        
+
         self.load = {}
-        
+
         self.schema = """
-            CREATE DATABASE IF NOT EXISTS samples; 
+            CREATE DATABASE IF NOT EXISTS samples;
             CREATE TABLE IF NOT EXISTS bank (
-                id UUID, 
-                event INT, 
-                lane STRING, 
-                ts TIMESTAMP, 
+                id UUID,
+                event INT,
+                lane STRING,
+                ts TIMESTAMP,
                 PRIMARY KEY (id, event)
             );
             """
-        
+
         # you can arbitrarely add any variables you want
         self.uuid = ''
         self.ts = ''
         self.event = ''
-        self.lane = parameters[0]
+
+        self.read_pct = float(self.parameters[0]) / 100
+        self.lane = parameters[1]
 
     def init(self):
         pass
-    
-    
+
     def run(self):
         if random.random() < self.read_pct:
             return [self.read]
         return [self.txn0, self.txn1, self.txn2]
-    
-    
+
     def read(self, conn: psycopg.Connection):
         with conn.cursor() as cur:
             cur.execute("select count(*) from bank;")
             cur.fetchone()
-    
+
     # conn is an instance of a psycopg connection object
     # conn is set with autocommit=True, so no need to send a commit message
     def txn0(self, conn: psycopg.Connection):
+        # simulate microservice doing something
         self.uuid = uuid.uuid4()
         self.ts = datetime.datetime.now()
         self.event = 0
 
         with conn.cursor() as cur:
-            stmt = """insert into bank values (%s, %s, %s, %s); 
-                    """
+            stmt = """
+                insert into bank values (%s, %s, %s, %s);
+                """
             cur.execute(stmt, (self.uuid, self.event, self.lane, self.ts))
 
     # example on how to create a transaction with multiple queries
     def txn1(self, conn: psycopg.Connection):
-        self.ts = datetime.datetime.now()
-        self.event = 1
-
         with conn.transaction() as tx:
             with conn.cursor() as cur:
                 cur.execute("select * from bank where id = %s", (self.uuid,))
@@ -75,9 +74,12 @@ class Bank:
 
                 # simulate microservice doing something
                 time.sleep(0.005)
+                self.ts = datetime.datetime.now()
+                self.event = 1
 
-                stmt = """insert into bank values (%s, %s, %s, %s); 
-                        """
+                stmt = """
+                    insert into bank values (%s, %s, %s, %s);
+                    """
                 cur.execute(stmt, (self.uuid, self.event, self.lane, self.ts))
 
     def txn2(self, conn: psycopg.Connection):
@@ -92,7 +94,7 @@ class Bank:
                 time.sleep(0.010)
 
                 stmt = """
-                    insert into bank values (%s, %s, %s, %s); 
+                    insert into bank values (%s, %s, %s, %s);
                     """
                 cur.execute(stmt, (self.uuid, self.event, self.lane, self.ts))
 
@@ -100,12 +102,58 @@ class Bank:
 class Balance:
 
     def __init__(self, parameters=[]):
-        
-        self.schema = ''
+
+        self.schema = """
+            CREATE TABLE IF NOT EXISTS balance (
+                id UUID NOT NULL DEFAULT gen_random_uuid(),
+                corr STRING(4) NOT NULL,
+                system_dt TIMESTAMP NOT NULL,
+                office STRING(4) NOT NULL,
+                acct_no STRING(12) NOT NULL,
+                sub_acct_no STRING(12) NULL,
+                acct_type STRING(2) NOT NULL,
+                symbol STRING(25) NOT NULL,
+                sym_no INT NOT NULL DEFAULT 0,
+                price DECIMAL(14,6) NOT NULL,
+                topen DECIMAL(16,6) NULL,
+                tclose DECIMAL(19,8) NOT NULL,
+                tmktval DECIMAL(19,6) NULL,
+                sopen DECIMAL(16,6) NULL,
+                sclose DECIMAL(19,8) NOT NULL,
+                smktval DECIMAL(19,6) NULL,
+                seg_orig DECIMAL(19,8) NULL,
+                seg_qty DECIMAL(19,8) NULL,
+                seg_fluid DECIMAL(16,6) NULL,
+                memo_rights DECIMAL(16,6) NULL,
+                memo_tender DECIMAL(16,6) NULL,
+                memo_splits DECIMAL(16,6) NULL,
+                memo_merger DECIMAL(16,6) NULL,
+                memo_acats DECIMAL(16,6) NULL,
+                memo_transfer DECIMAL(16,6) NULL,
+                memo_safekeep DECIMAL(16,6) NULL,
+                ex_req_value DECIMAL(19,6) NULL,
+                ho_req_value DECIMAL(19,6) NULL,
+                ex_req_method STRING(10) NULL,
+                exec_symbol STRING(25) NULL,
+                g_tcost DECIMAL(19,6) NULL,
+                n_tcost DECIMAL(19,6) NULL,
+                memo_firmuse DECIMAL(16,6) NULL,
+                fed_req_value DECIMAL(19,6) NULL,
+                hold_type STRING NOT NULL DEFAULT 'L':::STRING,
+                seg_earlyrel DECIMAL(19,8) NULL,
+                factor DECIMAL(19,12) NULL,
+                factor_dt DATE NULL,
+                CONSTRAINT "primary" PRIMARY KEY (id ASC),
+                UNIQUE INDEX balance_i2 (acct_no ASC, system_dt ASC, corr ASC, office ASC,
+                acct_type ASC, sym_no ASC, hold_type ASC),
+                INDEX balance_i3 (sym_no ASC, system_dt ASC)
+            );
+            """
+
         self.load = {}
-        
+
         self.parameters = parameters
-        
+
         # create a continuous cycle from the parameters
         self.row_cycle = itertools.cycle(parameters)
 
@@ -154,9 +202,12 @@ class Balance:
         self.factor = round(random.random() * 100000, 2)
         self.factor_dt = datetime.datetime.today()
 
+    def init(self):
+        pass
+
     def run(self):
         return [self.insert_balance for _ in self.parameters]
-        
+
     def reset(self):
         return (
             # id
@@ -282,56 +333,6 @@ class Balance:
             datetime.datetime.today()
         )
 
-    def init(self, conn: psycopg.Connection):
-        with conn.cursor() as cur:
-            ddl = """
-            CREATE TABLE IF NOT EXISTS balance (
-                id UUID NOT NULL DEFAULT gen_random_uuid(),
-                corr STRING(4) NOT NULL,
-                system_dt TIMESTAMP NOT NULL,
-                office STRING(4) NOT NULL,
-                acct_no STRING(12) NOT NULL,
-                sub_acct_no STRING(12) NULL,
-                acct_type STRING(2) NOT NULL,
-                symbol STRING(25) NOT NULL,
-                sym_no INT NOT NULL DEFAULT 0,
-                price DECIMAL(14,6) NOT NULL,
-                topen DECIMAL(16,6) NULL,
-                tclose DECIMAL(19,8) NOT NULL,
-                tmktval DECIMAL(19,6) NULL,
-                sopen DECIMAL(16,6) NULL,
-                sclose DECIMAL(19,8) NOT NULL,
-                smktval DECIMAL(19,6) NULL,
-                seg_orig DECIMAL(19,8) NULL,
-                seg_qty DECIMAL(19,8) NULL,
-                seg_fluid DECIMAL(16,6) NULL,
-                memo_rights DECIMAL(16,6) NULL,
-                memo_tender DECIMAL(16,6) NULL,
-                memo_splits DECIMAL(16,6) NULL,
-                memo_merger DECIMAL(16,6) NULL,
-                memo_acats DECIMAL(16,6) NULL,
-                memo_transfer DECIMAL(16,6) NULL,
-                memo_safekeep DECIMAL(16,6) NULL,
-                ex_req_value DECIMAL(19,6) NULL,
-                ho_req_value DECIMAL(19,6) NULL,
-                ex_req_method STRING(10) NULL,
-                exec_symbol STRING(25) NULL,
-                g_tcost DECIMAL(19,6) NULL,
-                n_tcost DECIMAL(19,6) NULL,
-                memo_firmuse DECIMAL(16,6) NULL,
-                fed_req_value DECIMAL(19,6) NULL,
-                hold_type STRING NOT NULL DEFAULT 'L':::STRING,
-                seg_earlyrel DECIMAL(19,8) NULL,
-                factor DECIMAL(19,12) NULL,
-                factor_dt DATE NULL,
-                CONSTRAINT "primary" PRIMARY KEY (id ASC),
-                UNIQUE INDEX balance_i2 (acct_no ASC, system_dt ASC, corr ASC, office ASC,
-                acct_type ASC, sym_no ASC, hold_type ASC),
-                INDEX balance_i3 (sym_no ASC, system_dt ASC)
-            );
-            """
-            cur.execute(ddl)
-
     def next_row(self):
         return int(next(self.row_cycle))
 
@@ -343,9 +344,9 @@ class Balance:
         for _ in range(self.next_row()):
             stmt += """
             (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s, %s, %s
             ),"""
 
@@ -354,12 +355,13 @@ class Balance:
         with conn.cursor() as cur:
             cur.execute(stmt[:-1], stmt_args)
 
+
 class Retailer:
-    
+
     def __init__(self, parameters=[]):
 
         self.parameters = parameters
-        
+
         # self.schema holds the DDL statement to create the schema
         self.schema = """
             CREATE TABLE IF NOT EXISTS credits (
@@ -386,102 +388,86 @@ class Retailer:
             );
             """
 
-        '''
-        # table credits ~7.5mio rows
-        17,f5da34d7-6c8a-4c1c-af05-e09d41f9fca2,O,2223248,2020-12-10 02:05:14,A,2020-12-25 02:39:30
-
-        int::start=1,end=28,seed=0; 
-        uuid::seed=0; 
-        
-        choices::list=O R,weights=9 1,seed=0; 
-        int::start=1,end=3572420,seed=0; 
-        
-        date::start=2020-12-15,delta=7,seed=0; 
-        choices::list=A R,weights=99 1,seed=0; 
-        date::start=2020-10-10,delta=180,seed=0
-
-        ## OFFERS
-        26,259f4329-e6f4-490b-9a16-4106cf6a659e,05b6e6e3-07d4-4edc-9143-1193e6c3f339,2021-09-16 21:42:15,2021-07-05 22:38:42
-
-        carota -r 10000 -t "
-        int::start=1,end=28,seed=0; 
-        uuid::seed=0; 
-        uuid::seed=1; 
-        date; 
-        date
-        " -o o.csv
-        
-        # then we append some more random data
-        carota -r 6000000 -t "int::start=0,end=100,seed=5; uuid::seed=5; uuid::seed=6; date; date" -o o.csv --append
-        '''
-
         # self.load holds the dictionaries of functions to be executed to load the database tables
         self.load = {
-            # 'credits': {
-            #     'count': 10,
-            #     'tables': {
-            #         'id': (simplefake.random_int, (1, 28)),
-            #         'code': (simplefake.uuid4, ()),
-            #         'channel': (simplefake.simple_random_choice, ([('O', 9), ('R', 1)], )),
-            #         'pid': (simplefake.random_int, (1, 3572420)),
-            #         'end_date': (simplefake.simple_date_time_between, ('2020-12-10', '2020-12-20')),
-            #         'status': (simplefake.simple_random_choice, ([('A', 99), ('R', 1)], )),
-            #         'start_date': (simplefake.simple_date_time_between, ('2020-07-01', '2021-01-31')),
-            #     }
-            # },
-            'offers': {
-                'count': 10,
-                'tables': {
-                    'id': simplefake.simple_random_int(1, 28, seed=0),
-                    'code': simplefake.simple_uuid_v4(seed=0),
-                    'token': simplefake.simple_uuid_v4(seed=1)
-                    # 'start_date': (simplefake.simple_date_time_between, ()),
-                    # 'end_date': (simplefake.simple_date_time_between, ('2020-07-01', '2021-01-31')),
+            'credits': [
+                {
+                    'count': 10,
+                    'sort-by': ['id'],
+                    'tables': {
+                        'id': simplefaker.Integer(1, 28, seed=0),
+                        'code': simplefaker.UUIDv4(seed=0),
+                        'channel': simplefaker.Choice(['O', 'R'], weights=[9, 1], seed=0),
+                        'pid': simplefaker.Integer(1, 3572420, seed=0),
+                        'end_date': simplefaker.Date('2020-12-10', '2020-12-20', seed=0),
+                        'status': simplefaker.Choice(['A', 'R'], [99, 1], seed=0),
+                        'start_date': simplefaker.Date('2020-04-10', '2021-06-10', seed=0),
+                    }
                 }
-            }
+            ],
+            'offers': [
+                {
+                    'count': 10,
+                    'tables': {
+                        'id': simplefaker.Integer(1, 28, seed=0),
+                        'code': simplefaker.UUIDv4(seed=0),
+                        'token': simplefaker.UUIDv4(seed=1),
+                        'start_date': simplefaker.Date('2020-04-10', '2021-06-10', seed=2),
+                        'end_date': simplefaker.Date('2020-04-10', '2021-06-10', seed=3),
+                    }
+                },
+                {
+                    'count': 10,
+                    'tables': {
+                        'id': simplefaker.Integer(1, 28, seed=5),
+                        'code': simplefaker.UUIDv4(seed=5),
+                        'token': simplefaker.UUIDv4(seed=6),
+                        'start_date': simplefaker.Date('2020-04-10', '2021-06-10', seed=5),
+                        'end_date': simplefaker.Date('2020-04-10', '2021-06-10', seed=6),
+                    }
+                }
+            ]
         }
-        
+
+    def init(self):
+        pass
+    
     def run(self):
         return [self.q1, self.q2]
-    
-    def q1(self, conn: psycopg.Connection):
 
+    def q1(self, conn: psycopg.Connection):
         with conn.cursor() as cur:
             stmt = """
-            SELECT DISTINCT c.id, c.code, c.channel, c.status, c.end_date, c.start_date
-            FROM credits AS c
-            WHERE c.status = 'A'
-                AND c.end_date >= '2020-11-20'
-                AND c.start_date <= '2020-11-20'
-                AND c.pid = '000000'
+                SELECT DISTINCT c.id, c.code, c.channel, c.status, c.end_date, c.start_date
+                FROM credits AS c
+                WHERE c.status = 'A'
+                    AND c.end_date >= '2020-11-20'
+                    AND c.start_date <= '2020-11-20'
+                    AND c.pid = '000000'
 
-            UNION
+                UNION
 
-            SELECT c.id, c.code, c.channel, c.status, c.end_date, c.start_date
-            FROM credits AS c, offers AS o
-            WHERE c.id = o.id
-                AND c.code = o.code
-                AND c.status = 'A'
-                AND c.end_date >= '2020-11-20'
-                AND c.start_date <= '2020-11-20'
-                AND o.token = 'c744250a-1377-4cdf-a1f4-5b85a4d29aaa';
-            """
-
+                SELECT c.id, c.code, c.channel, c.status, c.end_date, c.start_date
+                FROM credits AS c, offers AS o
+                WHERE c.id = o.id
+                    AND c.code = o.code
+                    AND c.status = 'A'
+                    AND c.end_date >= '2020-11-20'
+                    AND c.start_date <= '2020-11-20'
+                    AND o.token = 'c744250a-1377-4cdf-a1f4-5b85a4d29aaa';
+                """
             cur.execute(stmt)
 
     def q2(self, conn: psycopg.Connection):
-
         with conn.cursor() as cur:
-
             stmt = """
-            SELECT c.id, c.code, c.channel, c.status, c.end_date, c.start_date
-            FROM credits AS c, offers AS o
-            WHERE c.id = o.id
-                AND c.code = o.code
-                AND c.status = 'A'
-                AND c.end_date >= '2020-11-20'
-                AND c.start_date <= '2020-11-20'
-                AND o.token = 'c744250a-1377-4cdf-a1f4-5b85a4d29aaa';
-            """
+                SELECT c.id, c.code, c.channel, c.status, c.end_date, c.start_date
+                FROM credits AS c, offers AS o
+                WHERE c.id = o.id
+                    AND c.code = o.code
+                    AND c.status = 'A'
+                    AND c.end_date >= '2020-11-20'
+                    AND c.start_date <= '2020-11-20'
+                    AND o.token = 'c744250a-1377-4cdf-a1f4-5b85a4d29aaa';
+                """
             cur.execute(stmt)
-
