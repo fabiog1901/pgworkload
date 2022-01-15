@@ -5,7 +5,7 @@ import random
 import string
 import time
 import uuid
-from play import SimpleFaker
+from simplefaker import SimpleFaker
 
 global simplefaker
 simplefaker = SimpleFaker()

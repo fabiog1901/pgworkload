@@ -21,8 +21,7 @@ import socketserver
 import threading
 import numpy as np
 import pandas as pd
-
-from play import SimpleFaker
+from simplefaker import SimpleFaker
 
 
 DEFAULT_SLEEP = 5
@@ -136,7 +135,7 @@ def main():
     if args.init_db == '':
         args.init_db = os.path.splitext(
             os.path.basename(args.workload))[0].lower()
-                
+
     args.dburl = set_query_parameter(
         args.dburl, "application_name", args.app_name if args.app_name else workload.__name__)
     logging.info("dburl: '%s'" % args.dburl)
@@ -305,7 +304,7 @@ def setup_parser():
                         help="The workload class module, if different from the module basename")
     parser.add_argument('--parameters', dest='parameters', nargs='*', default=[],
                         help='parameters to pass to Workload at runtime')
-    
+
     return parser.parse_args()
 
 
@@ -360,9 +359,10 @@ def get_workload_load(workload: object):
             '%s. Make sure self.load is a valid dict variable in __init__. Setting \'load\' to an empty dict', e)
         return {}
 
+
 def get_new_dburl(dburl: str, db_name: str):
     """Return the dburl with the database name replaced.
-    
+
     Args:
         dburl (str): the database connection string
         db_name (str): the new database name
@@ -376,6 +376,7 @@ def get_new_dburl(dburl: str, db_name: str):
     return urllib.parse.urlunsplit(
         (scheme, netloc, path, query_string, fragment))
 
+
 def init(workload: object):
     logging.debug("Running init")
 
@@ -383,7 +384,8 @@ def init(workload: object):
     if args.init_skip_create_schema:
         logging.debug("Skipping init_create_schema")
     else:
-        init_create_schema(workload, args.dburl, args.init_drop, args.init_db, args.workload)
+        init_create_schema(workload, args.dburl,
+                           args.init_drop, args.init_db, args.workload)
 
     # PART 2 - GENERATE THE DATA
     if args.init_skip_data_generation:
@@ -417,7 +419,6 @@ def init_create_schema(workload: object, dburl: str, drop: bool, db_name: str, w
     logging.debug("Running init_create_schema")
     try:
         with psycopg.connect(dburl, autocommit=True) as conn:
-            
 
             with conn.cursor() as cur:
                 if drop:
@@ -433,7 +434,7 @@ def init_create_schema(workload: object, dburl: str, drop: bool, db_name: str, w
         logging.error("Exception: %s" % (e))
 
     dburl = get_new_dburl(dburl, db_name)
-        
+
     # now that we've created the database, connect to that database
     # and load the schema, which can be in a <workload>.sql file
     # or in the self.schema variable of the workload.
