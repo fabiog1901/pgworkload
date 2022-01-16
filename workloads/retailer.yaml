@@ -1,7 +1,7 @@
 credits:
   - count: 100
-    sort-by: []
-      # - id
+    sort-by:
+      - id
     tables:
       id:
         type: Integer
@@ -52,8 +52,11 @@ credits:
           end: "2021-06-10"
           seed: 0
 offers:
-  - count: 2000
-    sort-by: []
+  - count: 200
+    sort-by: 
+      - id
+      - code
+      - token
     tables:
       id:
         type: Integer
@@ -82,31 +85,32 @@ offers:
           end: "2021-06-10"
           seed: 3
   - count: 2000
-    sort-by: []
+    sort-by: 
+      - id
+      - code
+      - token
     tables:
       id:
         type: Integer
         args:
           start: 1
           end: 28
-          seed: 0
+          seed: 5
       code:
         type: UUIDv4
         args:
-          seed: 0
+          seed: 5
       token:
         type: UUIDv4
         args:
-          seed: 1
+          seed: 6
       start_date:
         type: Date
         args:
           start: "2020-04-10"
           end: "2021-06-10"
-          seed: 2
       end_date:
         type: Date
         args:
           start: "2020-04-10"
           end: "2021-06-10"
-          seed: 3

@@ -6,6 +6,7 @@ import string
 import time
 import uuid
 
+
 class Retailer:
 
     def __init__(self, parameters=[]):
@@ -50,112 +51,11 @@ credits:
           start: 1
           end: 28
           seed: 0
-      code:
-        type: UUIDv4
-        args:
-          seed: 0
-      channel:
-        type: Choice
-        args:
-          population:
-            - O
-            - R
-          weights:
-            - 9
-            - 1
-          seed: 0
-      pid:
-        type: Integer
-        args:
-          start: 1
-          end: 3572420
-          seed: 0
-      end_date:
-        type: Date
-        args:
-          start: "2020-12-10"
-          end: "2020-12-20"
-          seed: 0
-      status:
-        type: Choice
-        args:
-          population:
-            - A
-            - R
-          weights:
-            - 99
-            - 1
-          seed: 0
-      start_date:
-        type: Date
-        args:
-          start: "2020-04-10"
-          end: "2021-06-10"
-          seed: 0
-offers:
-  - count: 2000
-    sort-by: []
-    tables:
-      id:
-        type: Integer
-        args:
-          start: 1
-          end: 28
-          seed: 0
-      code:
-        type: UUIDv4
-        args:
-          seed: 0
-      token:
-        type: UUIDv4
-        args:
-          seed: 1
-      start_date:
-        type: Date
-        args:
-          start: "2020-04-10"
-          end: "2021-06-10"
-          seed: 2
-      end_date:
-        type: Date
-        args:
-          start: "2020-04-10"
-          end: "2021-06-10"
-          seed: 3
-  - count: 2000
-    sort-by: []
-    tables:
-      id:
-        type: Integer
-        args:
-          start: 1
-          end: 28
-          seed: 0
-      code:
-        type: UUIDv4
-        args:
-          seed: 0
-      token:
-        type: UUIDv4
-        args:
-          seed: 1
-      start_date:
-        type: Date
-        args:
-          start: "2020-04-10"
-          end: "2021-06-10"
-          seed: 2
-      end_date:
-        type: Date
-        args:
-          start: "2020-04-10"
-          end: "2021-06-10"
-          seed: 3
 """
-            
+
     def init(self):
         pass
-    
+
     def run(self):
         return [self.q1, self.q2]
 
