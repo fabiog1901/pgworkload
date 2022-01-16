@@ -22,9 +22,10 @@ import threading
 import numpy as np
 import pandas as pd
 from simplefaker import SimpleFaker
-
+import yaml
 
 DEFAULT_SLEEP = 5
+DEFAULT_SEED = 0
 CSV_MAX_ROWS = 1000000
 
 
@@ -120,7 +121,7 @@ def main():
 
     signal.signal(signal.SIGINT, signal_handler)
 
-    workload = import_class_at_runtime(args.workload, args.workload_class)
+    workload = import_class_at_runtime(args.workload)
 
     stats = Stats(frequency=args.frequency)
 
@@ -238,12 +239,11 @@ def set_query_parameter(url, param_name, param_value):
     return urllib.parse.urlunsplit((scheme, netloc, path, new_query_string, fragment))
 
 
-def import_class_at_runtime(module: str, class_name: str):
-    """Imports a class with the same name of the module unless class_name is passed.
+def import_class_at_runtime(module: str):
+    """Imports a class with the same name of the module.
 
     Args:
         module (string): the path of the module to import
-        class_name (string): the name of the class to import
 
     Returns:
         class: the imported class
@@ -251,7 +251,7 @@ def import_class_at_runtime(module: str, class_name: str):
     if module.endswith('.py'):
         module = module[:-3]
     module = module.replace('/', '.')
-    class_name = module.split('.')[-1] if class_name is None else class_name
+    class_name = module.split('.')[-1].capitalize()
     try:
         pkg = importlib.import_module(module)
         return getattr(pkg, class_name)
@@ -299,9 +299,7 @@ def setup_parser():
     parser.add_argument('--stats-frequency', dest='frequency', type=int, default=10,
                         help='How often to display the stats in seconds (default=10)')
     parser.add_argument('--workload', dest='workload', required=True,
-                        help="Path to the workload module. Eg: workloads/bank.py")
-    parser.add_argument('--workload-class', dest='workload_class', type=str,
-                        help="The workload class module, if different from the module basename")
+                        help="Path to the workload module. Eg: workloads/bank.py for class 'Bank'")
     parser.add_argument('--parameters', dest='parameters', nargs='*', default=[],
                         help='parameters to pass to Workload at runtime')
 
@@ -335,29 +333,30 @@ def run_transaction(conn, op, max_retries=3):
         f"Transaction did not succeed after {max_retries} retries")
 
 
-def get_bitgenerators(obj, seed: int, spawn_count: int):
-    bitgens = [np.random.PCG64(x) for x in np.random.SeedSequence(
-        seed).spawn(spawn_count)]
-    return [obj.get_copy(x) for x in bitgens]
-
-
-def get_new_sequence(obj, start, count, num_procs):
-    div = int(count/num_procs)
-    return [SimpleFaker.Sequence(div * x + start) for x in range(num_procs)]
-
-
 def get_csv_files_dirname():
     return os.path.join(os.path.dirname(args.workload), os.path.splitext(
         os.path.basename(args.workload))[0].lower())
 
 
-def get_workload_load(workload: object):
-    try:
-        return workload.load
-    except AttributeError as e:
-        logging.warning(
-            '%s. Make sure self.load is a valid dict variable in __init__. Setting \'load\' to an empty dict', e)
-        return {}
+def get_workload_load(workload: object, workload_path: str):
+    # find if the .yaml file exists
+    yaml_file = os.path.join(os.path.dirname(workload_path), os.path.splitext(
+        os.path.basename(workload_path))[0].lower() + '.yaml')
+
+    if os.path.exists(yaml_file):
+        logging.debug(
+            'Found data generation definition YAML file %s' % yaml_file)
+        with open(yaml_file, 'r') as f:
+            return yaml.safe_load(f)
+    else:
+        logging.debug(
+            'YAML file %s not found. Loading data generation definition from the \'load\' variable', yaml_file)
+        try:
+            return yaml.safe_load(workload.load)
+        except AttributeError as e:
+            logging.error(
+                '%s. Make sure self.load is a valid variable in __init__', e)
+            return {}
 
 
 def get_new_dburl(dburl: str, db_name: str):
@@ -377,6 +376,58 @@ def get_new_dburl(dburl: str, db_name: str):
         (scheme, netloc, path, query_string, fragment))
 
 
+def simplefaker_parser(obj: dict, count: int, exec_threads: int):
+    # extract all possible args for all possible types to avoid repetition
+
+    # date, time, timestamp, string.
+    start = obj.get('args').get('start')
+    end = obj.get('args').get('end')
+    format = obj.get('args').get('format')
+    micros = obj.get('args').get('micros')
+
+    # integer
+    min = obj.get('args').get('min')
+    max = obj.get('args').get('max')
+    n = obj.get('args').get('n')
+
+    # choice
+    population = obj.get('args').get('population')
+    weights = obj.get('args').get('weights')
+    cum_weights = obj.get('args').get('cum_weights')
+
+    # costant
+    value = obj.get('args').get('value')
+
+    # all types
+    seed = obj.get('args').get('seed', DEFAULT_SEED)
+
+    bitgens = [np.random.PCG64(x) for x in np.random.SeedSequence(
+        seed).spawn(exec_threads)]
+    otype = obj['type'].lower()
+
+    if otype == 'integer':
+        return [SimpleFaker.Integer(start, end, bitgen) for bitgen in bitgens]
+    elif otype == 'string':
+        return [SimpleFaker.String(min, max, bitgen) for bitgen in bitgens]
+    elif otype == 'bytes':
+        return [SimpleFaker.Bytes(n, bitgen) for bitgen in bitgens]
+    elif otype == 'choice':
+        return [SimpleFaker.Choice(population, bitgen, weights, cum_weights) for bitgen in bitgens]
+    elif otype == 'uuidv4':
+        return [SimpleFaker.UUIDv4(bitgen) for bitgen in bitgens]
+    elif otype == 'timestamp':
+        return [SimpleFaker.Timestamp(start, end, bitgen, format) for bitgen in bitgens]
+    elif otype == 'time':
+        return [SimpleFaker.Time(start, end, bitgen, micros) for bitgen in bitgens]
+    elif otype == 'date':
+        return [SimpleFaker.Date(start, end, bitgen, format) for bitgen in bitgens]
+    elif otype == 'costant':
+        return [SimpleFaker.Costant(value) for _ in bitgens]
+    elif otype == 'sequence':
+        div = int(count/exec_threads)
+        return [SimpleFaker.Sequence(div * x + start) for x in range(exec_threads)]
+
+
 def init(workload: object):
     logging.debug("Running init")
 
@@ -391,14 +442,14 @@ def init(workload: object):
     if args.init_skip_data_generation:
         logging.debug("Skipping init_generate_data")
     else:
-        init_generate_data(workload, args.concurrency)
+        init_generate_data(workload, args.concurrency, args.workload)
 
     # PART 3 - IMPORT THE DATA
     dburl = get_new_dburl(args.dburl, args.init_db)
     if args.init_skip_data_import:
         logging.debug("Skipping init_import_data")
     else:
-        init_import_data(workload, dburl)
+        init_import_data(workload, dburl, args.workload)
 
     # PART 4 - RUN WORKLOAD INIT
     try:
@@ -468,10 +519,15 @@ def init_create_schema(workload: object, dburl: str, drop: bool, db_name: str, w
         sys.exit(1)
 
 
-def init_generate_data(workload: object, exec_threads: int):
+def init_generate_data(workload: object, exec_threads: int, workload_path: str):
     logging.debug("Running init_generate_data")
     # description of how to generate the data is in workload variable self.load
-    load = get_workload_load(workload)
+
+    load = get_workload_load(workload, workload_path)
+    if not load:
+        logging.info(
+            "Data generation definition file (.yaml) or variable (self.load) not defined. Skipping")
+        return
 
     # get the dirname to put the csv files
     csv_dir = get_csv_files_dirname()
@@ -493,22 +549,20 @@ def init_generate_data(workload: object, exec_threads: int):
             col_names = list(item['tables'].keys())
             sort_by = item.get('sort-by', [])
             for col, obj in item['tables'].items():
-
-                if isinstance(obj, SimpleFaker.Sequence):
-                    item['tables'][col] = get_new_sequence(
-                        obj, obj.start, item['count'], exec_threads)
-                else:
-                    item['tables'][col] = get_bitgenerators(
-                        obj, obj.seed, exec_threads)
+                # get the list of simplefaker objects with different seeds
+                item['tables'][col] = simplefaker_parser(
+                    obj, item['count'], exec_threads)
 
             write_csvs(item, csv_file_basename + '.' +
                        str(table_details.index(item)), col_names, sort_by)
 
 
-def init_import_data(workload, dburl):
+def init_import_data(workload, dburl, workload_path):
     logging.debug("Running init_import_data")
+
     csv_dir = get_csv_files_dirname()
-    load = get_workload_load(workload)
+    load = get_workload_load(workload, workload_path)
+
     # Start the http server in a new thread
     threading.Thread(name='httpserver', target=httpserver,
                      args=(csv_dir, 3000), daemon=True).start()
@@ -556,7 +610,7 @@ def init_import_data(workload, dburl):
         sys.exit(1)
 
 
-def load_worker(generators: tuple, iterations: int, basename: str, col_names: list, sort_by: list, separator: str):
+def init_worker(generators: tuple, iterations: int, basename: str, col_names: list, sort_by: list, separator: str):
     if iterations > CSV_MAX_ROWS:
         count = int(iterations/CSV_MAX_ROWS)
         rem = iterations % CSV_MAX_ROWS
@@ -583,14 +637,14 @@ def load_worker(generators: tuple, iterations: int, basename: str, col_names: li
             .to_csv(basename + '_' + str(count) + '.csv', sep=separator, header=False, index=False)
 
 
-def rows_in_chunks(count: int, concurrency: int):
-    rows_to_process = int(count/concurrency)
-    rows_left_over = count % concurrency
+def division_with_modulo(total: int, divider: int):
+    rows_to_process = int(total/divider)
+    rows_left_over = total % divider
 
     if rows_left_over == 0:
-        return [rows_to_process] * concurrency
+        return [rows_to_process] * divider
     else:
-        l = [rows_to_process] * (concurrency-1)
+        l = [rows_to_process] * (divider-1)
         l.append(rows_to_process + rows_left_over)
         return l
 
@@ -601,12 +655,12 @@ def write_csvs(obj, basename, col_names, sort_by):
     # create a zip object so that generators are paired together
     z = zip(*[x for x in obj['tables'].values()])
 
-    rows_chunk = rows_in_chunks(obj['count'], args.concurrency)
+    rows_chunk = division_with_modulo(obj['count'], args.concurrency)
     procs = []
     for i, rows in enumerate(rows_chunk):
         output_file = basename + '_' + str(i)
 
-        p = mp.Process(target=load_worker, args=(
+        p = mp.Process(target=init_worker, args=(
             next(z), rows, output_file, col_names, sort_by, args.delimiter))
         p.start()
         procs.append(p)

@@ -13,14 +13,10 @@ class SimpleFaker:
         """Iterator that counts upward forever."""
 
         def __init__(self, value):
-            self.seed = 0
             self.value = value
 
         def __next__(self):
             return self.value
-
-        def get_copy(self, bitgenerator: np.random.BitGenerator):
-            return self
 
     class Sequence:
         """Iterator that counts upward forever."""
@@ -33,120 +29,80 @@ class SimpleFaker:
             self.start += 1
             return start
 
-        def get_copy(self, start):
-            return SimpleFaker.Sequence(start)
 
     class UUIDv4:
-        def __init__(self, bitgenerator: np.random.PCG64 = None, seed: int = 0):
-            self.seed = seed
-            if bitgenerator is None:
-                self.bitgen = np.random.PCG64(seed)
-            else:
-                self.bitgen = bitgenerator
+        def __init__(self, bitgenerator: np.random.PCG64):
+            self.bitgen = np.random.PCG64() if bitgenerator is None else bitgenerator
+
             self.rng = np.random.Generator(self.bitgen)
 
         def __next__(self):
             return uuid.UUID(bytes=self.rng.bytes(16), version=4)
 
-        def get_copy(self, bitgenerator: np.random.BitGenerator):
-            return SimpleFaker.UUIDv4(bitgenerator=bitgenerator)
 
     class Timestamp:
-        def __init__(self, start_ts, end_ts, format: str = '%Y-%m-%d %H:%M:%S.%f', bitgenerator: np.random.PCG64 = None, seed: int = 0):
-            self.format = format
-            self.start_iso = start_ts
-            self.end_iso = end_ts
-            self.start = dt.datetime.fromisoformat(
-                start_ts).timestamp() * 1000000
-            self.end = dt.datetime.fromisoformat(end_ts).timestamp() * 1000000
+        def __init__(self, start: str, end: str, bitgenerator: np.random.PCG64, format: str):
+            self.format = '%Y-%m-%d %H:%M:%S.%f' if format is None else format
+            self.start = dt.datetime.fromisoformat(start).timestamp() * 1000000
+            self.end = dt.datetime.fromisoformat(end).timestamp() * 1000000
 
-            self.seed = seed
-            if bitgenerator is None:
-                self.bitgen = np.random.PCG64(seed)
-            else:
-                self.bitgen = bitgenerator
+            self.bitgen = np.random.PCG64() if bitgenerator is None else bitgenerator
+
             self.rng = np.random.Generator(self.bitgen)
-
+            
         def __next__(self):
             return dt.datetime.fromtimestamp(self.rng.integers(self.start, self.end)/1000000).strftime(self.format)
 
-        def get_copy(self, bitgenerator: np.random.BitGenerator):
-            return SimpleFaker.Timestamp(self.start_iso, self.end_iso, self.format, bitgenerator=bitgenerator)
 
     class Date(Timestamp):
-        def __init__(self, start, end, format: str = '%Y-%m-%d', bitgenerator: np.random.PCG64 = None, seed: int = 0):
-            super().__init__(start_ts=start, end_ts=end, format=format, seed=seed)
-
-        def __next__(self):
-            return next(self)
+        def __init__(self, start: str, end: str, bitgenerator: np.random.PCG64, format: str = '%Y-%m-%d'):
+            self.format = '%Y-%m-%d' if format is None else format
+            super().__init__(start=start, end=end, bitgenerator=bitgenerator, format=self.format)
 
     class Time(Timestamp):
-        def __init__(self, start, end, show_micros: bool = False, bitgenerator: np.random.PCG64 = None, seed: int = 0):
-            format = '%H:%M:%S.%f' if show_micros else '%H:%M:%S'
-            super().__init__(start_ts='1970-01-01 ' + start,
-                             end_ts='1970-01-01 ' + end, format=format, seed=seed)
-
-        def __next__(self):
-            return next(self)
+        def __init__(self, start: str, end: str, bitgenerator: np.random.PCG64, micros: bool):
+            self.format = '%H:%M:%S.%f' if micros is True else '%H:%M:%S'
+            super().__init__(start='1970-01-01 ' + start,
+                             end='1970-01-01 ' + end, bitgenerator=bitgenerator, format=self.format)
 
     class String:
-        def __init__(self, min_len: int = 1, max_len: int = 30, bitgenerator: np.random.PCG64 = None, seed: int = 0):
-            self.min = min_len
-            self.max = max_len
+        def __init__(self, min: int, max: int, bitgenerator: np.random.PCG64):
+            self.min: int = 10 if min is None else min
+            self.max: int = 50 if max is None else max
+            self.letters: np.array = np.array([char for char in string.ascii_letters])
+            self.bitgen = np.random.PCG64() if bitgenerator is None else bitgenerator
 
-            self.seed = seed
-            if bitgenerator is None:
-                self.bitgen = np.random.PCG64(seed)
-            else:
-                self.bitgen = bitgenerator
             self.rng = np.random.Generator(self.bitgen)
 
-            self.l = np.array([char for char in string.ascii_letters])
-
         def __next__(self):
-            return ''.join(self.rng.choice(self.l,
+            return ''.join(self.rng.choice(self.letters,
                                            size=(self.min if self.min == self.max else self.rng.integers(self.min, self.max))))
 
-        def get_copy(self, bitgenerator: np.random.BitGenerator):
-            return SimpleFaker.String(self.min, self.max, bitgenerator=bitgenerator)
 
     class Integer:
-        def __init__(self, start, end, bitgenerator: np.random.PCG64 = None, seed: int = 0):
-            self.start = start
-            self.end = end
+        def __init__(self, min: int, max: int, bitgenerator: np.random.PCG64):
+            self.min: int = 0 if min is None else min 
+            self.max: int = 1000000 if max is None else max          
+            self.bitgen = np.random.PCG64() if bitgenerator is None else bitgenerator
 
-            self.seed = seed
-            if bitgenerator is None:
-                self.bitgen = np.random.PCG64(seed)
-            else:
-                self.bitgen = bitgenerator
             self.rng = np.random.Generator(self.bitgen)
 
         def __next__(self):
-            return self.rng.integers(self.start, self.end)
-
-        def get_copy(self, bitgenerator: np.random.BitGenerator):
-            return SimpleFaker.Integer(self.start, self.end, bitgenerator=bitgenerator)
+            return self.rng.integers(self.min, self.max)
 
     class Bytes:
-        def __init__(self, n: int = 1, bitgenerator: np.random.PCG64 = None, seed: int = 0):
-            self.n = n
+        def __init__(self, n: int, bitgenerator: np.random.PCG64):
+            self.n: int = 1 if n is None else n
 
-            self.seed = seed
-            if bitgenerator is None:
-                self.bitgen = np.random.PCG64(seed)
-            else:
-                self.bitgen = bitgenerator
+            self.bitgen = np.random.PCG64() if bitgenerator is None else bitgenerator
+
             self.rng = np.random.Generator(self.bitgen)
 
         def __next__(self):
             return self.rng.bytes(self.n)
 
-        def get_copy(self, bitgenerator: np.random.BitGenerator):
-            return SimpleFaker.Bytes(self.n, bitgenerator=bitgenerator)
-
     class Choice:
-        def __init__(self, population, weights=None, cum_weights=None, bitgenerator: np.random.PCG64 = None, seed: int = 0):
+        def __init__(self, population, bitgenerator: np.random.PCG64, weights=None, cum_weights=None):
             """Return a k sized list of population elements chosen with replacement.
             If the relative weights or cumulative weights are not specified,
             the selections are made with equal probability.
@@ -155,18 +111,12 @@ class SimpleFaker:
             self.weights = weights
             self.cum_weights = cum_weights
 
-            self.seed = seed
-            if bitgenerator is None:
-                self.bitgen = np.random.PCG64(seed)
-            else:
-                self.bitgen = bitgenerator
+            self.bitgen = np.random.PCG64() if bitgenerator is None else bitgenerator
+
             self.rng = np.random.Generator(self.bitgen)
 
         def __next__(self):
             return self.choices(self.population, weights=self.weights, cum_weights=self.cum_weights)[0]
-
-        def get_copy(self, bitgenerator: np.random.BitGenerator):
-            return SimpleFaker.Choice(self.population, self.weights, self.cum_weights, bitgenerator=bitgenerator)
 
         def choices(self, population, weights=None, *, cum_weights=None, k=1):
             """Return a k sized list of population elements chosen with replacement.
