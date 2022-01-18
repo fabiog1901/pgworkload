@@ -4,7 +4,7 @@ WARNING: This is still a work-in-progress project.
 
 ## Overview
 
-The goal of pgWorkload is to ease the creation of workloads scripts by providing a pseudo-framework with the most common functionality already implemented.
+The goal of pgWorkload is to ease the creation of workload scripts by providing a framework with the most common functionality already implemented.
 
 File `pgWorkload.py` is run in conjunction with a user supplied Python `class`. This class defines the workload transactions and flow.
 
@@ -12,7 +12,7 @@ The user has complete control of what statements the transactions actually execu
 
 ## Example
 
-Class `Bank` in file `workloads/samples.py` is an example of one such user-created workload.
+Class `Bank` in file `workloads/bank.py` is an example of one such user-created workload.
 The class defines 3 simple transactions that have to be executed by `pgWorkload.py`.
 
 Let's run the sample **Bank** workload.
@@ -26,28 +26,35 @@ python3 -m venv venv
 source venv/bin/activate
 
 # now we're inside our virtual env
-pip3 install psycopg psycopg-binary numpy tabulate
+pip3 install psycopg psycopg-binary numpy tabulate pandas pyyaml
 ```
 
 Just to confirm:
 
 ```bash
-(venv) fabio@mac: ~/pgWorkload $ python3 -V
+(venv) $ python3 -V
 Python 3.9.9
 
-(venv) fabio@mac: ~/pgWorkload $ pip3 -V
+(venv) $ pip3 -V
 pip 21.2.4 from /Users/fabio/pgWorkload/venv/lib/python3.9/site-packages/pip (python 3.9)
 
-(venv) fabio@mac: ~/pgWorkload $ pip3 freeze
-numpy==1.21.5
-psycopg==3.0.7
-psycopg-binary==3.0.7
+(venv) $ pip3 freeze
+numpy==1.22.1
+pandas==1.3.5
+psycopg==3.0.8
+psycopg-binary==3.0.8
+python-dateutil==2.8.2
+pytz==2021.3
+PyYAML==6.0
+six==1.16.0
 tabulate==0.8.9
 ```
 
-### Step 1 - Create cluster and load schema
+### Step 1 - Create cluster and init the workload
 
-For simplicity, we create a local single-node cluster
+For simplicity, we create a local single-node cluster.
+
+Open a new Terminal window, and start the cluster and access the SQL prompt
 
 ```bash
 cockroach start-single-node --insecure --background
@@ -55,61 +62,42 @@ cockroach start-single-node --insecure --background
 cockroach sql --insecure
 ```
 
-Create the simple schema in database `defaultdb`
+Init the **Bank** workload
 
-```sql
-CREATE TABLE bank (
-    id UUID, 
-    event INT, 
-    lane STRING, 
-    ts TIMESTAMP, 
-    PRIMARY KEY (id, event)
-);
+```bash
+python3 pgWorkload.py --workload=workloads/bank.py --concurrency=8 --parameters 50 wire --init
 ```
 
 ### Step 2 - Run the workload
 
-Run the workload using 2 connections for 120 seconds or 10k times, whichever comes first.
+Run the workload using 8 connections for 120 seconds.
 
 ```bash
-python3 pgWorkload.py --concurrency=2 --duration=120 --iterations=10000 --workload=workloads/samples.py --workload-class=Bank --parameters=swift
+python3 pgWorkload.py --workload=workloads/bank.py --concurrency=8 --parameters 90 wire --url='postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank' --duration=120
 ```
 
 pgWorkload will output something like below
 
 ```text
-2021-12-26 17:52:36,910 [INFO] (MainProcess 10373) dburl: 'postgres://root@localhost:26257/defaultdb?sslmode=disable&application_name=Bank'
-transaction name      elapsed_time    total_ops    tot_ops/second    period_ops    period_ops/second    p50(ms)    p90(ms)    p95(ms)    max(ms)
-------------------  --------------  -----------  ----------------  ------------  -------------------  ---------  ---------  ---------  ---------
-__cycle__                       10          164             15.94           164                 16.4     110.79     131.62     149.65     223.4
-txn0                            10          166             16.14           166                 16.6      36.54      38.99      50.92      80.82
-txn1                            10          165             16.04           165                 16.5      36.77      42.01      56.14      77.73
-txn2                            10          164             15.94           164                 16.4      36.81      41.04      54.03      74.56 
+2022-01-18 16:42:41,241 [INFO] (MainProcess 22029) dburl: 'postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank'
+id               elapsed    tot_ops    tot_ops/s    period_ops    period_ops/s    mean(ms)    p50(ms)    p90(ms)    p95(ms)    p99(ms)    pMax(ms)
+-------------  ---------  ---------  -----------  ------------  --------------  ----------  ---------  ---------  ---------  ---------  ----------
+__cycle__             10       4714       469.77          4714           471.4       15.55       0.46      75.63     111.8      136.39      175.99
+read                  10       4246       422.97          4246           424.6        4.45       0.44       2.24      37.97      43.12       96.23
+txn1_new              10        473        47.11           473            47.3       35.51      35.37      41.38      53.66      69.97       74.6
+txn2_verify           10        471        46.9            471            47.1       40.24      38.11      43.32      56.19      74.67       96.38
+txn3_finalize         10        468        46.6            468            46.8       40.19      38.05      42.82      56.37      74.87       96.2 
 
 [...]
-2021-12-26 17:54:37,610 [INFO] (MainProcess 10373) Requested iteration/duration limit reached. Printing final stats
-transaction name      elapsed_time    total_ops    tot_ops/second    period_ops    period_ops/second    p50(ms)    p90(ms)    p95(ms)    max(ms)
-------------------  --------------  -----------  ----------------  ------------  -------------------  ---------  ---------  ---------  ---------
-__cycle__                      121         2037             16.88             8                  0.8     110.77     114.77     114.97     115.17
-txn0                           121         2037             16.88             6                  0.6      36.04      36.62      36.71      36.79
-txn1                           121         2037             16.88             8                  0.8      35.86      41.94      42         42.05
-txn2                           121         2037             16.88             8                  0.8      36.39      38.04      39.32      40.59 
-```
 
-On the SQL terminal, the data has been inserted
-
-```text
-root@:26257/defaultdb> select * from bank limit 5;
-                   id                  | event | lane  |             ts
----------------------------------------+-------+-------+-----------------------------
-  00291758-3616-4cc9-b0b2-e8dbc10a266e |     0 | swift | 2021-12-26 17:57:31.644156
-  00291758-3616-4cc9-b0b2-e8dbc10a266e |     1 | swift | 2021-12-26 17:57:31.679694
-  00291758-3616-4cc9-b0b2-e8dbc10a266e |     2 | swift | 2021-12-26 17:57:31.717327
-  00a4a750-90a5-4ab1-8779-324d34d4f706 |     0 | swift | 2021-12-26 17:57:21.626455
-  00a4a750-90a5-4ab1-8779-324d34d4f706 |     1 | swift | 2021-12-26 17:57:21.662035
-(5 rows)
-
-Time: 1ms total (execution 1ms / network 0ms)
+2022-01-18 16:44:42,080 [INFO] (MainProcess 22029) Requested iteration/duration limit reached. Printing final stats
+id               elapsed    tot_ops    tot_ops/s    period_ops    period_ops/s    mean(ms)    p50(ms)    p90(ms)    p95(ms)    p99(ms)    pMax(ms)
+-------------  ---------  ---------  -----------  ------------  --------------  ----------  ---------  ---------  ---------  ---------  ----------
+__cycle__            121      61000       504.8            285            28.5       19.74       0.57     106.88     113.4      148.33      152.3
+read                 121      55033       455.42           248            24.8        5.21       0.52      37.33      38.08      50.08       57.79
+txn1_new             121       5967        49.38            32             3.2       37         36.11      50.79      56.69      70.5        76.21
+txn2_verify          121       5967        49.38            36             3.6       40.33      38.12      49.71      56.67      58.14       58.15
+txn3_finalize        121       5967        49.38            37             3.7       40.08      37.9       46.37      58.02      60.42       61.74 
 ```
 
 ## Acknowledgments

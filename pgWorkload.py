@@ -610,6 +610,7 @@ def init_import_data(workload, dburl, workload_path):
 
 
 def init_worker(generators: tuple, iterations: int, basename: str, col_names: list, sort_by: list, separator: str):
+    logging.debug("Init worker created")
     if iterations > CSV_MAX_ROWS:
         count = int(iterations/CSV_MAX_ROWS)
         rem = iterations % CSV_MAX_ROWS

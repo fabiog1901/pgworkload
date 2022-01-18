@@ -91,11 +91,11 @@ transactions:
             - checks
             - wire
             - ach
-          # weights:
-          #   - 2
-          #   - 2
-          #   - 5
-          #   - 5
+          weights:
+            - 2
+            - 2
+            - 5
+            - 5
           seed: 0
       ts:
         type: timestamp
