@@ -1,0 +1,105 @@
+ref_data:
+  - count: 1000000
+    sort-by:
+      - my_sequence
+    tables:
+      my_sequence:
+        type: sequence
+        args: 
+          start: 0
+      my_costant:
+        type: costant
+        args:
+          value: simplefaker
+      my_uuid:
+        type: UUIDv4
+        args:
+          seed: 0
+      my_choice:
+        type: choice
+        args:
+          population:
+            - Mon
+            - Tue
+            - Wed
+            - Thu
+            - Fri
+            - Sat
+            - Sun
+          weights: []
+            # None
+          cum_weights: []
+            # None
+          seed: 0
+      my_integer:
+        type: integer
+        args:
+          start: 1000
+          end: 9999
+          seed: 0
+      my_timestamp:
+        type: timestamp
+        args:
+          start: "2022-01-01"
+          end: "2022-12-31"
+          format: '%Y-%m-%d %H:%M:%S.%f'
+          seed: 0
+      my_date:
+        type: Date
+        args:
+          start: "2022-01-01"
+          end: "2022-12-31"
+          format: '%Y-%m-%d'
+          seed: 0
+      my_time:
+        type: Time
+        args:
+          start: "07:30:00"
+          end: "15:30:00"
+          micros: no
+          seed: 0
+      # my_bytes:
+      #   type: bytes
+      #   args:
+      #     n: 1
+      #     seed: 0
+      my_string:
+        type: string
+        args:
+          min: 10
+          max: 50
+          seed: 0
+transactions:
+  - count: 100000
+    sort-by:
+      - id
+    tables:
+      id:
+        type: uuidv4
+        args:
+          seed: 0
+      event:
+        type: integer
+        args:
+          min: 1
+          max: 3
+      lane:
+        type: choice
+        args:
+          population:
+            - depo
+            - checks
+            - wire
+            - ach
+          # weights:
+          #   - 2
+          #   - 2
+          #   - 5
+          #   - 5
+          seed: 0
+      ts:
+        type: timestamp
+        args:
+          start: "2022-01-01"
+          end: "2022-01-31"
+          seed: 0

@@ -1,10 +1,9 @@
 #!/usr/bin/python
 
 import argparse
-import datetime
+import datetime as dt
 import logging
 import multiprocessing as mp
-import numpy
 import os
 import psycopg
 import queue
@@ -70,7 +69,7 @@ class Stats:
     # If action_list is empty, it will only prevent rows it has captured this period, otherwise it will print a row for each action.
     def print_stats(self, action_list=[]):
         def get_percentile_measurement(action, percentile):
-            return numpy.percentile(self.window_stats.setdefault(action, [0]), percentile)
+            return np.percentile(self.window_stats.setdefault(action, [0]), percentile)
 
         def get_stats_row(action):
             elapsed = time.time() - self.instantiation_time
@@ -84,7 +83,7 @@ class Stats:
                         round(
                             len(self.window_stats[action]) / self.frequency, 2),
                         round(
-                            float(numpy.mean(self.window_stats[action]) * 1000), 2),
+                            float(np.mean(self.window_stats[action]) * 1000), 2),
                         round(float(get_percentile_measurement(
                             action, 50)) * 1000, 2),
                         round(float(get_percentile_measurement(
@@ -535,7 +534,7 @@ def init_generate_data(workload: object, exec_threads: int, workload_path: str):
     # backup the current directory as to not override
     if os.path.isdir(csv_dir):
         os.rename(csv_dir, csv_dir + '.' +
-                  datetime.datetime.utcnow().strftime('%Y%m%d-%H%M%S'))
+                  dt.datetime.utcnow().strftime('%Y%m%d-%H%M%S'))
 
     # create new directory
     os.mkdir(csv_dir)
