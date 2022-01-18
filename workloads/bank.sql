@@ -1,11 +1,3 @@
-CREATE TABLE IF NOT EXISTS transactions (
-    id UUID,
-    event INT,
-    lane STRING,
-    ts TIMESTAMP,
-    PRIMARY KEY (id, event)
-);
-
 CREATE TABLE IF NOT EXISTS ref_data (
     my_sequence INT PRIMARY KEY,
     my_costant STRING,
@@ -17,4 +9,12 @@ CREATE TABLE IF NOT EXISTS ref_data (
     my_time TIME,
     -- my_bytes BYTES,
     my_string STRING
+);
+
+CREATE TABLE IF NOT EXISTS transactions (
+    id UUID,
+    event INT,
+    lane STRING,
+    ts TIMESTAMP,
+    PRIMARY KEY (id, event)
 );

@@ -1,7 +1,5 @@
 # pgWorkload - workload framework for the PostgreSQL protocol
 
-WARNING: This is still a work-in-progress project.
-
 ## Overview
 
 The goal of pgWorkload is to ease the creation of workload scripts by providing a framework with the most common functionality already implemented.
@@ -9,6 +7,10 @@ The goal of pgWorkload is to ease the creation of workload scripts by providing 
 File `pgWorkload.py` is run in conjunction with a user supplied Python `class`. This class defines the workload transactions and flow.
 
 The user has complete control of what statements the transactions actually execute, and what transactions are executed in which order.
+
+pgWorkload can seed a database with random generated data, whose definition is supplied in a YAML file.
+
+A .sql file can be supplied to create the schema and run any special queries, eg. Zone Configuration changes.
 
 ## Example
 
@@ -23,10 +25,15 @@ Let's create a Virtual environment for our testing
 
 ```bash
 python3 -m venv venv
-source venv/bin/activate
+cd venv
+source bin/activate
 
 # now we're inside our virtual env
 pip3 install psycopg psycopg-binary numpy tabulate pandas pyyaml
+
+# clone this repo
+git clone https://github.com/fabiog1901/pgWorkload
+cd pgWorkload
 ```
 
 Just to confirm:
@@ -62,42 +69,52 @@ cockroach start-single-node --insecure --background
 cockroach sql --insecure
 ```
 
-Init the **Bank** workload
+Back to the previous terminal, init the **Bank** workload
 
 ```bash
 python3 pgWorkload.py --workload=workloads/bank.py --concurrency=8 --parameters 50 wire --init
 ```
 
+You should see something like below
+
+```text
+2022-01-18 17:09:07,730 [INFO] (MainProcess 24211) dburl: 'postgres://root@localhost:26257/defaultdb?sslmode=disable&application_name=Bank'
+2022-01-18 17:09:07,908 [INFO] (MainProcess 24211) Database 'bank' created.
+2022-01-18 17:09:08,172 [INFO] (MainProcess 24211) Created workload schema
+2022-01-18 17:09:08,196 [INFO] (MainProcess 24211) Generating dataset for table 'ref_data'
+2022-01-18 17:09:54,555 [INFO] (MainProcess 24211) Init completed. Please update your database connection url to 'postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank'
+```
+
 ### Step 2 - Run the workload
 
-Run the workload using 8 connections for 120 seconds.
+Run the workload using 8 connections for 120 seconds or 100k cycles, whichever comes first.
 
 ```bash
-python3 pgWorkload.py --workload=workloads/bank.py --concurrency=8 --parameters 90 wire --url='postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank' --duration=120
+python3 pgWorkload.py --workload=workloads/bank.py --concurrency=8 --parameters 90 wire --url='postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank' --duration=120 --iterations=100000
 ```
 
 pgWorkload will output something like below
 
 ```text
-2022-01-18 16:42:41,241 [INFO] (MainProcess 22029) dburl: 'postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank'
+2022-01-18 17:11:24,539 [INFO] (MainProcess 24450) dburl: 'postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank'
 id               elapsed    tot_ops    tot_ops/s    period_ops    period_ops/s    mean(ms)    p50(ms)    p90(ms)    p95(ms)    p99(ms)    pMax(ms)
 -------------  ---------  ---------  -----------  ------------  --------------  ----------  ---------  ---------  ---------  ---------  ----------
-__cycle__             10       4714       469.77          4714           471.4       15.55       0.46      75.63     111.8      136.39      175.99
-read                  10       4246       422.97          4246           424.6        4.45       0.44       2.24      37.97      43.12       96.23
-txn1_new              10        473        47.11           473            47.3       35.51      35.37      41.38      53.66      69.97       74.6
-txn2_verify           10        471        46.9            471            47.1       40.24      38.11      43.32      56.19      74.67       96.38
-txn3_finalize         10        468        46.6            468            46.8       40.19      38.05      42.82      56.37      74.87       96.2 
+__cycle__             10       4537       452.12          4537           453.7       16.28       0.45      98.12     112.19     152.16      214.85
+read                  10       4073       405.76          4073           407.3        4.47       0.42      36.32      37.98      43.2        94.28
+txn1_new              10        466        46.41           466            46.6       37.44      35.64      52.34      65.58      73.65       83.29
+txn2_verify           10        466        46.41           466            46.6       41.84      38.06      55.85      73.19      93.56       94.47
+txn3_finalize         10        464        46.21           464            46.4       40.42      38.19      43.32      56.1       74.36       94.35 
 
 [...]
 
-2022-01-18 16:44:42,080 [INFO] (MainProcess 22029) Requested iteration/duration limit reached. Printing final stats
+
+2022-01-18 17:13:25,294 [INFO] (MainProcess 24450) Requested iteration/duration limit reached. Printing final stats
 id               elapsed    tot_ops    tot_ops/s    period_ops    period_ops/s    mean(ms)    p50(ms)    p90(ms)    p95(ms)    p99(ms)    pMax(ms)
 -------------  ---------  ---------  -----------  ------------  --------------  ----------  ---------  ---------  ---------  ---------  ----------
-__cycle__            121      61000       504.8            285            28.5       19.74       0.57     106.88     113.4      148.33      152.3
-read                 121      55033       455.42           248            24.8        5.21       0.52      37.33      38.08      50.08       57.79
-txn1_new             121       5967        49.38            32             3.2       37         36.11      50.79      56.69      70.5        76.21
-txn2_verify          121       5967        49.38            36             3.6       40.33      38.12      49.71      56.67      58.14       58.15
-txn3_finalize        121       5967        49.38            37             3.7       40.08      37.9       46.37      58.02      60.42       61.74 
+__cycle__            121      59924       496.24           297            29.7       17.09       0.57     102.33     115.76     147.83      149.62
+read                 121      53951       446.78           265            26.5        4.51       0.52       0.93      38.52      55.9        57.38
+txn1_new             121       5973        49.46            26             2.6       34.27      33.19      38.02      50.63      55.55       55.82
+txn2_verify          121       5973        49.46            30             3         42.21      38.82      56.03      56.08      56.11       56.12
 ```
 
 ## Acknowledgments
