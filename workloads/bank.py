@@ -7,14 +7,29 @@ import uuid
 
 class Bank:
 
-    def __init__(self, parameters: list = [100]):
+    def __init__(self, parameters: list):
         # parameters is a list of string passed with the --parameters flag
         self.parameters = parameters
 
+        # in this case, item at index 0 holds the % of read ops
         self.read_pct = float(self.parameters[0]) / 100
+        # the second item holds the string for the lane
         self.lane = parameters[1]
 
-        # self.load holds the dictionaries of functions to be executed to load the database tables
+        # self.schema holds the DDL
+        self.schema = """
+            -- you can write the schema ddl here, but it's simpler to pass a .sql file
+            CREATE TABLE IF NOT EXISTS transaction (
+                id UUID,
+                event INT,
+                lane STRING,
+                ts TIMESTAMP,
+                PRIMARY KEY (id, event)
+            );
+            """
+
+        # self.load holds the dictionaries of functions to be executed
+        # to load the database tables
         self.load = """ 
 # This has to be a YAML string so 
 # it's important it starts with no indentation
@@ -29,17 +44,6 @@ credits:
         args:
           seed: 0
 """
-
-        self.schema = """
-            -- you can write the schema ddl here, but it's simpler to pass a .sql file
-            CREATE TABLE IF NOT EXISTS transaction (
-                id UUID,
-                event INT,
-                lane STRING,
-                ts TIMESTAMP,
-                PRIMARY KEY (id, event)
-            );
-            """
 
         # you can arbitrarely add any variables you want
         self.uuid = uuid.uuid4()
@@ -65,8 +69,6 @@ credits:
             cur.execute("select * from transactions where id = %s", (self.uuid, ))
             cur.fetchone()
 
-    # conn is an instance of a psycopg connection object
-    # conn is set with autocommit=True, so no need to send a commit message
     def txn1_new(self, conn: psycopg.Connection):
         # simulate microservice doing something
         self.uuid = uuid.uuid4()
@@ -84,7 +86,7 @@ credits:
         # all queries sent within 'tx' will commit only when tx is exited
         with conn.transaction() as tx:
             with conn.cursor() as cur:
-                # as we're insice 'tx', the below will not autocommit
+                # as we're inside 'tx', the below will not autocommit
                 cur.execute(
                     "select * from ref_data where my_sequence = %s", (random.randint(0, 100000), ))
                 cur.fetchone()
@@ -97,7 +99,7 @@ credits:
                 stmt = """
                     insert into transactions values (%s, %s, %s, %s);
                     """
-                # as we're insice 'tx', the below will not autocommit
+                # as we're inside 'tx', the below will not autocommit
                 cur.execute(stmt, (self.uuid, self.event, self.lane, self.ts))
 
     def txn3_finalize(self, conn: psycopg.Connection):

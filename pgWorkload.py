@@ -138,7 +138,7 @@ def main():
 
     args.dburl = set_query_parameter(
         args.dburl, "application_name", args.app_name if args.app_name else workload.__name__)
-    logging.info("dburl: '%s'" % args.dburl)
+    logging.info("URL: '%s'" % args.dburl)
 
     if args.init:
         init(workload(args.parameters))
@@ -578,7 +578,7 @@ def init_import_data(workload, dburl, workload_path):
                 node_count = cur.fetchone()[0]
 
                 for table in load.keys():
-
+                    logging.info("Importing data for table '%s'" % table)
                     # this lists all files related to a table
                     table_csv_files = [
                         x for x in csv_files if x.startswith(table)]
@@ -599,7 +599,6 @@ def init_import_data(workload, dburl, workload_path):
 
                         logging.debug('Importing files: %s' % str(chunk))
                         cur.execute(stmt)
-
     except psycopg.Error as e:
         logging.error("psycopg.Error: %s" % e)
         sys.exit(1)
