@@ -2,13 +2,13 @@
 
 ## Overview
 
-The goal of **pgworkload** is to ease the creation of workload scripts by providing a framework with the most common functionality already implemented.
+The goal of `pgworkload` is to ease the creation of workload scripts by providing a framework with the most common functionality already implemented.
 
 `pgworkload` is run in conjunction with a user supplied Python `class`. This class defines the workload transactions and flow.
 
 The user has complete control of what statements the transactions actually execute, and what transactions are executed in which order.
 
-pgworkload can seed a database with random generated data, whose definition is supplied in a YAML file.
+`pgworkload` can seed a database with random generated data, whose definition is supplied in a YAML file.
 
 A .sql file can be supplied to create the schema and run any special queries, eg. Zone Configuration changes.
 
@@ -49,9 +49,11 @@ source bin/activate
 # we're now inside our virtual env
 pip3 install pgworkload
 
-# clone this repo
-git clone https://github.com/fabiog1901/pgworkload
-cd pgworkload
+# download the bank workload files
+mkdir workloads
+wget -P workloads https://raw.githubusercontent.com/fabiog1901/pgworkload/main/workloads/bank.py
+wget -P workloads https://raw.githubusercontent.com/fabiog1901/pgworkload/main/workloads/bank.sql
+wget -P workloads https://raw.githubusercontent.com/fabiog1901/pgworkload/main/workloads/bank.yaml
 ```
 
 Just to confirm:
@@ -59,9 +61,6 @@ Just to confirm:
 ```bash
 (venv) $ python3 -V
 Python 3.9.9
-
-(venv) $ pip3 -V
-pip 21.2.4 from /Users/fabio/pgworkload/venv/lib/python3.9/site-packages/pip (python 3.9)
 ```
 
 ### Step 1 - Create cluster and init the workload
@@ -85,15 +84,15 @@ pgworkload --workload=workloads/bank.py --concurrency=8 --parameters 50 wire --i
 You should see something like below
 
 ```text
-2022-01-19 09:16:55,870 [INFO] (MainProcess 5194) URL: 'postgres://root@localhost:26257/defaultdb?sslmode=disable&application_name=Bank'
-2022-01-19 09:16:56,042 [INFO] (MainProcess 5194) Database 'bank' created.
-2022-01-19 09:16:56,324 [INFO] (MainProcess 5194) Created workload schema
-2022-01-19 09:16:56,345 [INFO] (MainProcess 5194) Generating dataset for table 'ref_data'
-2022-01-19 09:17:15,508 [INFO] (MainProcess 5194) Importing data for table 'ref_data'
-2022-01-19 09:17:29,284 [INFO] (MainProcess 5194) Init completed. Please update your database connection url to 'postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank'
+2022-01-28 17:21:47,335 [INFO] (MainProcess 29422) URL: 'postgres://root@localhost:26257/defaultdb?sslmode=disable&application_name=Bank'
+2022-01-28 17:21:47,480 [INFO] (MainProcess 29422) Database 'bank' created.
+2022-01-28 17:21:47,769 [INFO] (MainProcess 29422) Created workload schema
+2022-01-28 17:21:47,789 [INFO] (MainProcess 29422) Generating dataset for table 'ref_data'
+2022-01-28 17:22:07,088 [INFO] (MainProcess 29422) Importing data for table 'ref_data'
+2022-01-28 17:22:21,063 [INFO] (MainProcess 29422) Init completed. Please update your database connection url to 'postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank'
 ```
 
-pgworkload has read file `bank.sql` and has created the database and its schema.
+`pgworkload` has read file `bank.sql` and has created the database and its schema.
 It has then read file `bank.yaml` and has generated the CSV files for the table `ref_data`.
 Finally, it imports the CSV files into database `bank`.
 
@@ -105,32 +104,32 @@ Run the workload using 8 connections for 120 seconds or 100k cycles, whichever c
 pgworkload --workload=workloads/bank.py --concurrency=8 --parameters 90 wire --url='postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank' --duration=120 --iterations=100000
 ```
 
-pgworkload uses exclusively the excellent [Psycopg 3](https://www.psycopg.org/psycopg3/docs/) to connect.
+`pgworkload`` uses exclusively the excellent [Psycopg 3](https://www.psycopg.org/psycopg3/docs/) to connect.
 No other ORMs or drivers/libraries are used.
 Psycopg has a very simple, neat way to [create connections and execute statements](https://www.psycopg.org/psycopg3/docs/basic/usage.html) and [transactions](https://www.psycopg.org/psycopg3/docs/basic/transactions.html).
 
-pgworkload will output something like below
+`pgworkload` will output something like below
 
 ```text
-2022-01-19 09:18:04,679 [INFO] (MainProcess 5331) URL: 'postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank'
+2022-01-28 17:22:43,893 [INFO] (MainProcess 29511) URL: 'postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank'
 id               elapsed    tot_ops    tot_ops/s    period_ops    period_ops/s    mean(ms)    p50(ms)    p90(ms)    p95(ms)    p99(ms)    pMax(ms)
 -------------  ---------  ---------  -----------  ------------  --------------  ----------  ---------  ---------  ---------  ---------  ----------
-__cycle__             10       4775       475.93          4775           477.5       15.38       0.45      73.99     111.44     140.79      207.18
-read                  10       4307       429.15          4307           430.7        4.32       0.42       1.06      37.9       43.71       95.76
-txn1_new              10        473        47.12           473            47.3       36.35      35.15      44.94      55.4       73.43       94.69
-txn2_verify           10        472        47.02           472            47.2       40.58      38.06      43.08      57.1       74.95       95.79
-txn3_finalize         10        468        46.61           468            46.8       39.86      38.01      39.62      55.4       74.09       95.65 
+__cycle__             10       1342       133.72          1342           134.2       54.9       35.76     165.94     192.89     245.42      333.6
+read                  10       1215       121.03          1215           121.5       41.11      19.58     113.21     146.79     208.86      291.02
+txn1_new              10        130        12.95           130            13         48.29      53.81      74.7       90.84      95.66      108.37
+txn2_verify           10        129        12.85           129            12.9       70.9       73.73      94.3       99.69     137.99      164.96
+txn3_finalize         10        127        12.65           127            12.7       67.21      72.48      93.64     105.97     129.57      166 
 
 [...]
 
-2022-01-19 09:20:05,504 [INFO] (MainProcess 5331) Requested iteration/duration limit reached. Printing final stats
+2022-01-28 17:24:44,765 [INFO] (MainProcess 29511) Requested iteration/duration limit reached. Printing final stats
 id               elapsed    tot_ops    tot_ops/s    period_ops    period_ops/s    mean(ms)    p50(ms)    p90(ms)    p95(ms)    p99(ms)    pMax(ms)
 -------------  ---------  ---------  -----------  ------------  --------------  ----------  ---------  ---------  ---------  ---------  ----------
-__cycle__            121      58989       488.22           423            42.3       12.75       0.52      38.43     110.03     143.61      155.38
-read                 121      53005       438.69           389            38.9        3.57       0.5        0.85      37.79      41.99       73.51
-txn1_new             121       5984        49.52            31             3.1       34.28      34.14      38.5       51.94      58.75       61
-txn2_verify          121       5984        49.52            33             3.3       42.31      38.09      56.31      66.25      73.82       73.82
-txn3_finalize        121       5984        49.52            34             3.4       39.98      37.96      42.98      57.89      61.23       61.25 
+__cycle__            121      14519       120.12            66             6.6       94.08      96.68     203.74     216.83     242.24      262.69
+read                 121      13050       107.96            54             5.4       70.6       62.7      127.88     151.29     203.52      203.62
+txn1_new             121       1469        12.15             7             0.7       51.08      51.07      71.71      73.66      75.23       75.62
+txn2_verify          121       1469        12.15            11             1.1       70.52      76.92     102.31     102.32     102.33      102.33
+txn3_finalize        121       1469        12.15            12             1.2       81.19      98.97     103.88     103.97     103.98      103.98 
 ```
 
 There are many built-in options.
