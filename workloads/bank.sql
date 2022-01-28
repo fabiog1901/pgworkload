@@ -12,9 +12,9 @@ CREATE TABLE IF NOT EXISTS ref_data (
 );
 
 CREATE TABLE IF NOT EXISTS transactions (
+    lane STRING,
     id UUID,
     event INT,
-    lane STRING,
     ts TIMESTAMP,
-    PRIMARY KEY (id, event)
+    PRIMARY KEY (lane, id, event)
 );

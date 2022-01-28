@@ -79,7 +79,7 @@ credits:
             stmt = """
                 insert into transactions values (%s, %s, %s, %s);
                 """
-            cur.execute(stmt, (self.uuid, self.event, self.lane, self.ts))
+            cur.execute(stmt, (self.lane, self.uuid, self.event, self.ts))
 
     # example on how to create a transaction with multiple queries
     def txn2_verify(self, conn: psycopg.Connection):
@@ -100,7 +100,7 @@ credits:
                     insert into transactions values (%s, %s, %s, %s);
                     """
                 # as we're inside 'tx', the below will not autocommit
-                cur.execute(stmt, (self.uuid, self.event, self.lane, self.ts))
+                cur.execute(stmt, (self.lane, self.uuid, self.event, self.ts))
 
     def txn3_finalize(self, conn: psycopg.Connection):
         with conn.transaction() as tx:
@@ -117,4 +117,4 @@ credits:
                 stmt = """
                     insert into transactions values (%s, %s, %s, %s);
                     """
-                cur.execute(stmt, (self.uuid, self.event, self.lane, self.ts))
+                cur.execute(stmt, (self.lane, self.uuid, self.event, self.ts))

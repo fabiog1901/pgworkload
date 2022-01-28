@@ -20,7 +20,7 @@ import socketserver
 import threading
 import numpy as np
 import pandas as pd
-from simplefaker import SimpleFaker
+from pgworkload.simplefaker import SimpleFaker
 import yaml
 
 DEFAULT_SLEEP = 5
@@ -28,7 +28,7 @@ DEFAULT_SEED = 0
 CSV_MAX_ROWS = 1000000
 
 
-class quietServer(http.server.SimpleHTTPRequestHandler):
+class QuietServer(http.server.SimpleHTTPRequestHandler):
     """SimpleHTTPRequestHandler that doesn't output any log
     """
 
@@ -213,7 +213,7 @@ def httpserver(path, port=8000):
     """
     os.chdir(path)
     try:
-        with socketserver.TCPServer(("", 3000), quietServer) as httpd:
+        with socketserver.TCPServer(("", 3000), QuietServer) as httpd:
             httpd.serve_forever()
     except OSError as e:
         logging.error(e)
@@ -238,22 +238,22 @@ def set_query_parameter(url, param_name, param_value):
     return urllib.parse.urlunsplit((scheme, netloc, path, new_query_string, fragment))
 
 
-def import_class_at_runtime(module: str):
-    """Imports a class with the same name of the module.
+def import_class_at_runtime(path: str):
+    """Imports a class with the same name of the module capitalized.
+    Example: 'workloads/bank.py' returns class 'Bank' in module 'bank'
 
     Args:
-        module (string): the path of the module to import
+        path (string): the path of the module to import
 
     Returns:
         class: the imported class
     """
-    if module.endswith('.py'):
-        module = module[:-3]
-    module = module.replace('/', '.')
-    class_name = module.split('.')[-1].capitalize()
+    sys.path.append(os.path.dirname(path))
+    module_name = os.path.splitext(os.path.basename(path))[0] 
+
     try:
-        pkg = importlib.import_module(module)
-        return getattr(pkg, class_name)
+        module = importlib.import_module(module_name)
+        return getattr(module, module_name.capitalize())
     except AttributeError as e:
         logging.error(e)
         sys.exit(1)
@@ -745,5 +745,3 @@ args = setup_parser()
 logging.basicConfig(level=getattr(logging, args.loglevel.upper(), logging.INFO),
                     format='%(asctime)s [%(levelname)s] (%(processName)s %(process)d) %(message)s')
 
-if __name__ == '__main__':
-    main()
