@@ -3,21 +3,20 @@ import psycopg
 import random
 import time
 import uuid
+import logging
 
 
 class Bank:
 
-    def __init__(self, parameters: list):
-        # parameters is a list of string passed with the --parameters flag
-        self.parameters = parameters
+    def __init__(self, args: dict):
+        # args is a dict of string passed with the --args flag
+        # user passed a yaml/json, in python that's a dict object
 
-        # in this case, item at index 0 holds the % of read ops
-        self.read_pct = float(self.parameters[0]) / 100
-        # the second item holds the string for the lane
-        self.lane = parameters[1]
+        self.read_pct: float = float(args.get('read_pct', 50) / 100)
+        self.lane: str = args.get('lane', 'wire')
 
         # self.schema holds the DDL
-        self.schema = """
+        self.schema: str = """
             -- you can write the schema ddl here, but it's simpler to pass a .sql file
             CREATE TABLE IF NOT EXISTS transaction (
                 id UUID,
@@ -30,7 +29,7 @@ class Bank:
 
         # self.load holds the dictionaries of functions to be executed
         # to load the database tables
-        self.load = """ 
+        self.load: str = """ 
 # This has to be a YAML string so 
 # it's important it starts with no indentation
 # it's easier however, to pass a .yaml file instead
@@ -46,14 +45,15 @@ credits:
 """
 
         # you can arbitrarely add any variables you want
-        self.uuid = uuid.uuid4()
-        self.ts = ''
-        self.event = ''
+        self.uuid: uuid.UUID = uuid.uuid4()
+        self.ts: dt.datetime = ''
+        self.event: str = ''
 
 
     # the 'init' method is executed once, when the --init flag is passed
-    def init(self):
-        pass
+    def init(self, conn: psycopg.Connection):
+        with conn.cursor() as cur:
+            logging.info(cur.execute('select version();').fetchone())
 
     # the run method returns a list of transactions to be executed continuosly,
     # sequentially, as in a cycle.

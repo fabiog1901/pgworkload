@@ -26,6 +26,7 @@ import yaml
 DEFAULT_SLEEP = 5
 DEFAULT_SEED = 0
 CSV_MAX_ROWS = 1000000
+SUPPORTED_DBMS = ["PostgreSQL", "CockroachDB"]
 
 
 class QuietServer(http.server.SimpleHTTPRequestHandler):
@@ -126,7 +127,7 @@ def main():
 
     if not re.search(r'.*://.*/(.*)\?', args.dburl):
         logging.error(
-            "The connection string needs to point to a database. Example: postgres://root@localhost:26257/defaultdb?sslmode=disable")
+            "The connection string needs to point to a database. Example: postgres://root@localhost:26257/postgres?sslmode=disable")
         sys.exit(1)
 
     if args.iterations > 0:
@@ -141,7 +142,7 @@ def main():
     logging.info("URL: '%s'" % args.dburl)
 
     if args.init:
-        init(workload(args.parameters))
+        init(workload(args.args))
         sys.exit(0)
 
     q = mp.Queue(maxsize=1000)
@@ -152,12 +153,13 @@ def main():
 
     for _ in range(args.concurrency):
         mp.Process(target=worker, args=(
-            q, kill_q, args.dburl, workload, args.parameters, args.iterations, args.duration, args.conn_duration)).start()
+            q, kill_q, args.dburl, workload, args.args, args.iterations, args.duration, args.conn_duration)).start()
 
     try:
         stat_time = time.time() + args.frequency
         while True:
             try:
+                # read from the queue for stats or completion messages
                 tup = q.get(block=False)
                 if isinstance(tup, tuple):
                     stats.add_latency_measurement(*tup)
@@ -171,6 +173,9 @@ def main():
                     logging.error(tup)
                     logging.error(
                         "The schema is not present. Did you initialize the workload?")
+                    sys.exit(1)
+                elif isinstance(tup, psycopg.errors.OperationalError):
+                    logging.error(tup)
                     sys.exit(1)
                 else:
                     logging.info(
@@ -249,7 +254,7 @@ def import_class_at_runtime(path: str):
         class: the imported class
     """
     sys.path.append(os.path.dirname(path))
-    module_name = os.path.splitext(os.path.basename(path))[0] 
+    module_name = os.path.splitext(os.path.basename(path))[0]
 
     try:
         module = importlib.import_module(module_name)
@@ -296,11 +301,11 @@ def setup_parser():
     parser.add_argument('--conn-duration', dest='conn_duration', type=int, default=0,
                         help='The number of seconds to keep database connections alive before resetting them (default=0 --> ad infinitum)')
     parser.add_argument('--stats-frequency', dest='frequency', type=int, default=10,
-                        help='How often to display the stats in seconds (default=10)')
+                        help='How often to display the stats in seconds (default=10). Set 0 to suppress stats printing')
     parser.add_argument('--workload', dest='workload', required=True,
                         help="Path to the workload module. Eg: workloads/bank.py for class 'Bank'")
-    parser.add_argument('--parameters', dest='parameters', nargs='*', default=[],
-                        help='parameters to pass to Workload at runtime')
+    parser.add_argument('--args', dest='args', nargs='*', default={},
+                        help='args to pass to Workload at runtime')
 
     return parser.parse_args()
 
@@ -373,6 +378,17 @@ def get_new_dburl(dburl: str, db_name: str):
     path = '/' + db_name
     return urllib.parse.urlunsplit(
         (scheme, netloc, path, query_string, fragment))
+
+
+def get_dbms(conn: psycopg.Connection):
+    with conn.cursor() as cur:
+        cur.execute("select version();")
+        v: str = cur.fetchone()[0]
+        x: str = v.split(" ")[0]
+        if x not in SUPPORTED_DBMS:
+            logging.error("Unknown DBMS: %s" % x)
+            sys.exit(1)
+        return x
 
 
 def simplefaker_parser(obj: dict, count: int, exec_threads: int):
@@ -451,9 +467,10 @@ def init(workload: object):
         init_import_data(workload, dburl, args.workload)
 
     # PART 4 - RUN WORKLOAD INIT
+    logging.debug("Running workload.init()")
     try:
-        logging.debug("Running workload.init()")
-        workload.init()
+        with psycopg.connect(dburl, autocommit=True) as conn:
+            workload.init(conn)
     except Exception as e:
         logging.error(e)
         sys.exit(1)
@@ -469,19 +486,30 @@ def init_create_schema(workload: object, dburl: str, drop: bool, db_name: str, w
     logging.debug("Running init_create_schema")
     try:
         with psycopg.connect(dburl, autocommit=True) as conn:
-
+            # pg or crdb?
+            dbms = get_dbms(conn)
             with conn.cursor() as cur:
                 if drop:
-                    cur.execute(psycopg.sql.SQL("DROP DATABASE IF EXISTS {} CASCADE;").format(
-                        psycopg.sql.Identifier(db_name)))
+                    logging.debug("Dropping database '%s'" % db_name)
+                    if dbms == "CockroachDB":
+                        cur.execute(psycopg.sql.SQL("DROP DATABASE IF EXISTS {} CASCADE;").format(
+                            psycopg.sql.Identifier(db_name)))
+                    else:
+                        cur.execute(psycopg.sql.SQL("DROP DATABASE IF EXISTS {};").format(
+                            psycopg.sql.Identifier(db_name)))
 
-                cur.execute(psycopg.sql.SQL("CREATE DATABASE IF NOT EXISTS {};").format(
-                    psycopg.sql.Identifier(db_name)))
+                # determine if database exists already
+                # postgresql does not support CREATE DATABASE IF NOT EXISTS
+                if cur.execute('SELECT 1 FROM pg_database WHERE datname = %s;', (db_name, )).fetchone() is None:
+                    logging.debug("Creating database '%s'" % db_name)
+                    cur.execute(psycopg.sql.SQL("CREATE DATABASE {};").format(
+                        psycopg.sql.Identifier(db_name)))
 
                 logging.info("Database '%s' created." % db_name)
 
     except Exception as e:
         logging.error("Exception: %s" % (e))
+        sys.exit(1)
 
     dburl = get_new_dburl(dburl, db_name)
 
@@ -573,15 +601,21 @@ def init_import_data(workload, dburl, workload_path):
     try:
         with psycopg.connect(dburl, autocommit=True) as conn:
             with conn.cursor() as cur:
-                # fetch the count of nodes that are part of the cluster
-                cur.execute("select count(*) from crdb_internal.gossip_nodes;")
-                node_count = cur.fetchone()[0]
+                # PG or CRDB?
+                dbms = get_dbms(conn)
+
+                node_count = 1
+                if dbms == "CockroachDB":
+                    # fetch the count of nodes that are part of the cluster
+                    cur.execute(
+                        "select count(*) from crdb_internal.gossip_nodes;")
+                    node_count = cur.fetchone()[0]
 
                 for table in load.keys():
                     logging.info("Importing data for table '%s'" % table)
                     # this lists all files related to a table
                     table_csv_files = [
-                        x for x in csv_files if x.startswith(table)]
+                        x for x in csv_files if x.split('.')[0] == table]
 
                     # chunked list is a list of list, where each item is a list of 'node_count' size.
                     chunked_list = [table_csv_files[i:i+node_count]
@@ -590,20 +624,21 @@ def init_import_data(workload, dburl, workload_path):
                     # we import only 'node_count' items at a time, as
                     # we parallelize imports
                     for chunk in chunked_list:
-                        csv_data = ''
-                        for x in chunk:
-                            csv_data += "'http://localhost:3000/%s'," % x
+                        if dbms == 'CockroachDB':
+                            csv_data = ''
+                            for x in chunk:
+                                csv_data += "'http://localhost:3000/%s'," % x
 
-                        stmt = (
-                            "IMPORT INTO %s CSV DATA (%s) WITH delimiter = e'\t';" % (table, csv_data[:-1]))
+                            stmt = (
+                                "IMPORT INTO %s CSV DATA (%s) WITH delimiter = e'\t';" % (table, csv_data[:-1]))
+
+                        else:
+                            stmt = "COPY %s FROM '%s';" % (
+                                table, os.path.join(os.getcwd(), chunk[0]))
 
                         logging.debug('Importing files: %s' % str(chunk))
                         cur.execute(stmt)
-    except psycopg.Error as e:
-        logging.error("psycopg.Error: %s" % e)
-        sys.exit(1)
     except Exception as e:
-        logging.error(type(e))
         logging.error("Exception: %s" % (e))
         sys.exit(1)
 
@@ -670,13 +705,13 @@ def write_csvs(obj, basename, col_names, sort_by):
 
 
 def worker(q: mp.Queue, kill_q: mp.JoinableQueue, dburl: str,
-           workload: object, parameters: list, iterations: int, duration: int, conn_duration: int):
+           workload: object, args: dict, iterations: int, duration: int, conn_duration: int):
     logging.debug("Worker created")
 
     # capture KeyboardInterrupt and do nothing
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
-    w = workload(parameters)
+    w = workload(args)
     c = 0
     endtime = 0
     conn_endtime = 0
@@ -687,7 +722,14 @@ def worker(q: mp.Queue, kill_q: mp.JoinableQueue, dburl: str,
     while True:
         if conn_duration > 0:
             conn_endtime = time.time() + conn_duration
-
+        # listen for termination messages (poison pill)
+        try:
+            kill_q.get(block=False)
+            logging.debug("Poison pill received")
+            kill_q.task_done()
+            return
+        except queue.Empty:
+            pass
         try:
             with psycopg.connect(dburl, autocommit=True) as conn:
                 logging.debug("Connection started")
@@ -731,9 +773,13 @@ def worker(q: mp.Queue, kill_q: mp.JoinableQueue, dburl: str,
         except psycopg.errors.UndefinedTable as e:
             q.put(e)
             return
+        except psycopg.errors.OperationalError as e:
+            q.put(e)
+            return
         except psycopg.Error as e:
             logging.error(
                 "Lost connection to the database. Sleeping for %s seconds." % (DEFAULT_SLEEP))
+            logging.error(e)
             time.sleep(DEFAULT_SLEEP)
         except Exception as e:
             logging.error("Exception: %s" % (e))
@@ -745,3 +791,5 @@ args = setup_parser()
 logging.basicConfig(level=getattr(logging, args.loglevel.upper(), logging.INFO),
                     format='%(asctime)s [%(levelname)s] (%(processName)s %(process)d) %(message)s')
 
+if __name__ == "__main__":
+    main()
