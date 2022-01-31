@@ -137,6 +137,13 @@ def main():
         args.init_db = os.path.splitext(
             os.path.basename(args.workload))[0].lower()
 
+    # load args dict from file or string  
+    if os.path.exists(args.args):
+        with open(args.args, 'r') as f:
+            args.args = yaml.safe_load(f)
+    else:
+        args.args = yaml.safe_load(args.args)   
+    
     args.dburl = set_query_parameter(
         args.dburl, "application_name", args.app_name if args.app_name else workload.__name__)
     logging.info("URL: '%s'" % args.dburl)
@@ -304,8 +311,8 @@ def setup_parser():
                         help='How often to display the stats in seconds (default=10). Set 0 to suppress stats printing')
     parser.add_argument('--workload', dest='workload', required=True,
                         help="Path to the workload module. Eg: workloads/bank.py for class 'Bank'")
-    parser.add_argument('--args', dest='args', nargs='*', default={},
-                        help='args to pass to Workload at runtime')
+    parser.add_argument('--args', dest='args', default='{}',
+                        help='JSON string, or filepath to a JSON/YAML string, to pass to Workload at runtime')
 
     return parser.parse_args()
 
@@ -344,8 +351,8 @@ def get_csv_files_dirname():
 
 def get_workload_load(workload: object, workload_path: str):
     # find if the .yaml file exists
-    yaml_file = os.path.join(os.path.dirname(workload_path), os.path.splitext(
-        os.path.basename(workload_path))[0].lower() + '.yaml')
+    yaml_file = os.path.abspath(os.path.join(os.path.dirname(workload_path), os.path.splitext(
+        os.path.basename(workload_path))[0].lower() + '.yaml'))
 
     if os.path.exists(yaml_file):
         logging.debug(
@@ -518,8 +525,8 @@ def init_create_schema(workload: object, dburl: str, drop: bool, db_name: str, w
     # or in the self.schema variable of the workload.
 
     # find if the .sql file exists
-    schema_sql_file = os.path.join(os.path.dirname(workload_path), os.path.splitext(
-        os.path.basename(workload_path))[0].lower() + '.sql')
+    schema_sql_file = os.path.abspath(os.path.join(os.path.dirname(workload_path), os.path.splitext(
+        os.path.basename(workload_path))[0].lower() + '.sql'))
 
     if os.path.exists(schema_sql_file):
         logging.debug('Found schema SQL file %s' % schema_sql_file)
