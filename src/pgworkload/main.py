@@ -143,6 +143,9 @@ def main():
             args.args = yaml.safe_load(f)
     else:
         args.args = yaml.safe_load(args.args)   
+        if isinstance(args.args, str):
+            logging.error("The value passed to '--args' is not a valid JSON or a valid path to a JSON/YAML file: '%s'" % args.args)
+            sys.exit(1)
     
     args.dburl = set_query_parameter(
         args.dburl, "application_name", args.app_name if args.app_name else workload.__name__)

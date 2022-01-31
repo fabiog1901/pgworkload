@@ -54,6 +54,7 @@ mkdir workloads
 wget -P workloads https://raw.githubusercontent.com/fabiog1901/pgworkload/main/workloads/bank.py
 wget -P workloads https://raw.githubusercontent.com/fabiog1901/pgworkload/main/workloads/bank.sql
 wget -P workloads https://raw.githubusercontent.com/fabiog1901/pgworkload/main/workloads/bank.yaml
+wget -P workloads https://raw.githubusercontent.com/fabiog1901/pgworkload/main/workloads/bank.args.yaml
 ```
 
 Just to confirm:
