@@ -27,7 +27,7 @@ Take a close look at this last table: each column represent a different type, wh
 
 File `bank.yaml` is the data generation definition file.
 For each column of table `ref_data`, we deterministically generate random data.
-This file is meant as a guide to show what type of data can be generated, and what parameters are required.
+This file is meant as a guide to show what type of data can be generated, and what args are required.
 
 File `bank.py` defines the workload.
 The workload is defined as a class object.
@@ -37,7 +37,7 @@ Read the comments along the code for more information.
 
 Let's run the sample **Bank** workload.
 
-### Step 0 - Create python env
+### Step 0 - Create Python env
 
 Let's create a Virtual environment for our testing
 
@@ -63,28 +63,24 @@ Just to confirm:
 Python 3.9.9
 ```
 
-### Step 1 - Create cluster and init the workload
+### Step 1 - Init the workload
 
-For simplicity, we create a local single-node cluster.
+We assume that your **CockroachDB** cluster or **PostgreSQL** server is up and running.
 
-Open a new Terminal window, and start the cluster and access the SQL prompt
-
-```bash
-cockroach start-single-node --insecure --background
-
-cockroach sql --insecure
-```
-
-Back to the previous terminal, init the **Bank** workload
+Init the **Bank** workload.
 
 ```bash
-pgworkload --workload=workloads/bank.py --concurrency=8 --parameters 50 wire --init
+# CockroachDB
+pgworkload --workload=workloads/bank.py --concurrency=8 --init --url='postgres://localhost:26257/postgres?sslmode=disable'
+
+# PostgreSQL
+pgworkload --workload=workloads/bank.py --concurrency=8 --init --url='postgres://localhost:5432/postgres?sslmode=disable'
 ```
 
 You should see something like below
 
 ```text
-2022-01-28 17:21:47,335 [INFO] (MainProcess 29422) URL: 'postgres://root@localhost:26257/defaultdb?sslmode=disable&application_name=Bank'
+2022-01-28 17:21:47,335 [INFO] (MainProcess 29422) URL: 'postgres://root@localhost:[5432|26257]/defaultdb?sslmode=disable&application_name=Bank'
 2022-01-28 17:21:47,480 [INFO] (MainProcess 29422) Database 'bank' created.
 2022-01-28 17:21:47,769 [INFO] (MainProcess 29422) Created workload schema
 2022-01-28 17:21:47,789 [INFO] (MainProcess 29422) Generating dataset for table 'ref_data'
@@ -101,10 +97,14 @@ Finally, it imports the CSV files into database `bank`.
 Run the workload using 8 connections for 120 seconds or 100k cycles, whichever comes first.
 
 ```bash
-pgworkload --workload=workloads/bank.py --concurrency=8 --parameters 90 wire --url='postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank' --duration=120 --iterations=100000
+# CockroachDB
+pgworkload --workload=workloads/bank.py --concurrency=8 --args='{"lane": "wire", "read_pct": 50}' --url='postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank' --duration=120 --iterations=100000
+
+# PostgreSQL
+pgworkload --workload=workloads/bank.py --concurrency=8 --args='{"lane": "wire", "read_pct": 50}' --url='postgres://root@localhost:5432/bank?sslmode=disable&application_name=Bank' --duration=120 --iterations=100000
 ```
 
-`pgworkload`` uses exclusively the excellent [Psycopg 3](https://www.psycopg.org/psycopg3/docs/) to connect.
+`pgworkload` uses exclusively the excellent [Psycopg 3](https://www.psycopg.org/psycopg3/docs/) to connect.
 No other ORMs or drivers/libraries are used.
 Psycopg has a very simple, neat way to [create connections and execute statements](https://www.psycopg.org/psycopg3/docs/basic/usage.html) and [transactions](https://www.psycopg.org/psycopg3/docs/basic/transactions.html).
 
