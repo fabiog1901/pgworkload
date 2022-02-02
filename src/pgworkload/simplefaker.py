@@ -1,14 +1,25 @@
-from bisect import bisect as _bisect
+import bisect
 import datetime as dt
 import itertools
+import logging
 import math
 import numpy as np
 import string
 import uuid
+import pandas as pd
+import multiprocessing as mp
+import os
+import gzip
+
 
 
 class SimpleFaker:
 
+    def __init__(self, csv_max_rows: int = 1000000, seed: int = 0, compression: str = 'gzip'):
+        self.csv_max_rows = csv_max_rows
+        self.seed = seed
+        self.compression = compression
+        
     class Costant:
         """Iterator that counts upward forever."""
 
@@ -30,6 +41,8 @@ class SimpleFaker:
             return start
 
     class UUIDv4:
+        """Iterator thar yields a UUIDv4
+        """
         def __init__(self, bitgenerator: np.random.PCG64):
             self.bitgen: np.random.PCG64 = np.random.PCG64(
             ) if bitgenerator is None else bitgenerator
@@ -40,6 +53,8 @@ class SimpleFaker:
             return uuid.UUID(bytes=self.rng.bytes(16), version=4)
 
     class Timestamp:
+        """Iterator that yields a Timestamp string
+        """
         def __init__(self, start: str, end: str, bitgenerator: np.random.PCG64, format: str):
             self.format: str = '%Y-%m-%d %H:%M:%S.%f' if format is None else format
             self._start: str = '2022-01-01' if start is None else start
@@ -59,11 +74,15 @@ class SimpleFaker:
             return dt.datetime.fromtimestamp(self.rng.integers(self.start, self.end)/1000000).strftime(self.format)
 
     class Date(Timestamp):
+        """Iterator that yields a Date string
+        """
         def __init__(self, start: str, end: str, bitgenerator: np.random.PCG64, format: str):
             self.format: str = '%Y-%m-%d' if format is None else format
             super().__init__(start=start, end=end, bitgenerator=bitgenerator, format=self.format)
 
     class Time(Timestamp):
+        """Iterator that yields a Time string
+        """
         def __init__(self, start: str, end: str, bitgenerator: np.random.PCG64, micros: bool):
             self.format: str = '%H:%M:%S' if not micros else '%H:%M:%S.%f'
             self._start: str = '07:30:00' if start is None else start
@@ -72,6 +91,8 @@ class SimpleFaker:
                              end='1970-01-01 ' + self._end, bitgenerator=bitgenerator, format=self.format)
 
     class String:
+        """Iterator that yields a random string of ascii characters
+        """
         def __init__(self, min: int, max: int, bitgenerator: np.random.PCG64):
             self.min: int = 10 if min is None else min
             self.max: int = 50 if max is None else max
@@ -87,6 +108,8 @@ class SimpleFaker:
                                            size=(self.min if self.min == self.max else self.rng.integers(self.min, self.max))))
 
     class Integer:
+        """Iterator that yields a random integer
+        """
         def __init__(self, min: int, max: int, bitgenerator: np.random.PCG64):
             self.min: int = 1000 if min is None else min
             self.max: int = 9999 if max is None else max
@@ -97,8 +120,24 @@ class SimpleFaker:
 
         def __next__(self):
             return self.rng.integers(self.min, self.max)
+    
+    class Float:
+        """Iterator that yields a random float number
+        """
+        def __init__(self, max: int, round: int, bitgenerator: np.random.PCG64):
+            self.max: int = 1000 if max is None else max
+            self.round: int = 2 if round is None else round
+            self.bitgen: np.random.PCG64 = np.random.PCG64(
+            ) if bitgenerator is None else bitgenerator
 
+            self.rng: np.random.Generator = np.random.Generator(self.bitgen)
+
+        def __next__(self):
+            return round(self.rng.random() * self.max, self.round)
+        
     class Bytes:
+        """Iterator that yields a random byte array
+        """
         def __init__(self, n: int, bitgenerator: np.random.PCG64):
             self.n: int = 1 if n is None else n
 
@@ -111,11 +150,9 @@ class SimpleFaker:
             return self.rng.bytes(self.n)
 
     class Choice:
+        """Iterator that yields 1 item from a list
+        """
         def __init__(self, population: list, bitgenerator: np.random.PCG64, weights: list, cum_weights: list):
-            """Return a k sized list of population elements chosen with replacement.
-            If the relative weights or cumulative weights are not specified,
-            the selections are made with equal probability.
-            """
             self.population: list = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri',
                                      'Sat', 'Sun'] if population is None else population
             self.weights: list = None if not weights else weights
@@ -159,7 +196,159 @@ class SimpleFaker:
             total = cum_weights[-1] + 0.0   # convert to float
             if total <= 0.0:
                 raise ValueError('Total of weights must be greater than zero')
-            bisect = _bisect
             hi = n - 1
-            return [population[bisect(cum_weights, random() * total, 0, hi)]
+            return [population[bisect.bisect(cum_weights, random() * total, 0, hi)]
                     for i in itertools.repeat(None, k)]
+
+    def __get_simplefaker_objects(self, type: str, args: dict, count: int, exec_threads: int):
+        """Returns a list of SimpleFaker objects based on the number of execution threads.
+        Each SimpleFaker object in the list has its own seed number
+
+        Args:
+            type (str): the name of object to create
+            args (dict): args required to create the SimpleFaker object
+            count (int): count of rows to generate (for SimpleFaker.Sequence obj)
+            exec_threads (int): count of parallel processes/threads used for data generation
+
+        Returns:
+            list: a <exec_threads> long list of SimpleFaker objects of type <type> 
+        """
+
+        # Extract all possible args for all possible types to avoid repetition
+        # date, time, timestamp, string.
+        start = args.get('start')
+        end = args.get('end')
+        format = args.get('format')
+        micros = args.get('micros')
+
+        # integer/float
+        min = args.get('min')
+        max = args.get('max')
+        n = args.get('n')
+        round = args.get('round')
+
+        # choice
+        population = args.get('population')
+        weights = args.get('weights')
+        cum_weights = args.get('cum_weights')
+
+        # costant
+        value = args.get('value')
+
+        # all types
+        seed = args.get('seed', self.seed)
+
+        bitgens = [np.random.PCG64(x) for x in np.random.SeedSequence(
+            seed).spawn(exec_threads)]
+        
+        type = type.lower()
+        
+        if type == 'integer':
+            return [SimpleFaker.Integer(start, end, bitgen) for bitgen in bitgens]
+        elif type == 'float':
+            return [SimpleFaker.Float(max, round, bitgen) for bitgen in bitgens]
+        elif type == 'string':
+            return [SimpleFaker.String(min, max, bitgen) for bitgen in bitgens]
+        elif type == 'bytes':
+            return [SimpleFaker.Bytes(n, bitgen) for bitgen in bitgens]
+        elif type == 'choice':
+            return [SimpleFaker.Choice(population, bitgen, weights, cum_weights) for bitgen in bitgens]
+        elif type == 'uuidv4':
+            return [SimpleFaker.UUIDv4(bitgen) for bitgen in bitgens]
+        elif type == 'timestamp':
+            return [SimpleFaker.Timestamp(start, end, bitgen, format) for bitgen in bitgens]
+        elif type == 'time':
+            return [SimpleFaker.Time(start, end, bitgen, micros) for bitgen in bitgens]
+        elif type == 'date':
+            return [SimpleFaker.Date(start, end, bitgen, format) for bitgen in bitgens]
+        elif type == 'costant':
+            return [SimpleFaker.Costant(value) for _ in bitgens]
+        elif type == 'sequence':
+            div = int(count/exec_threads)
+            return [SimpleFaker.Sequence(div * x + start) for x in range(exec_threads)]
+
+    def worker(self, generators: tuple, iterations: int, basename: str, col_names: list, sort_by: list, separator: str):
+        logging.debug("SimpleFaker worker created")
+        if iterations > self.csv_max_rows:
+            count = int(iterations/self.csv_max_rows)
+            rem = iterations % self.csv_max_rows
+            iterations = self.csv_max_rows
+        else:
+            count = 1
+            rem = 0
+
+        if self.compression == 'gzip':
+            suffix = '.csv.gz'
+        elif self.compression == 'zip':
+            suffix = 'csv.zip'
+        elif self.compression == None:
+            suffix = '.csv'
+        else:
+            suffix = '.csv'
+            
+        for x in range(count):
+            pd.DataFrame(
+                [row for row in [[next(x) for x in generators]
+                                for _ in range(iterations)]],
+                columns=col_names)\
+                .sort_values(by=sort_by)\
+                .to_csv(basename + '_' + str(x) + suffix, sep=separator, header=False, index=False, compression=self.compression)
+
+        # remaining rows, if any
+        if rem > 0:
+            pd.DataFrame(
+                [row for row in [[next(x) for x in generators]
+                                for _ in range(rem)]],
+                columns=col_names)\
+                .sort_values(by=sort_by)\
+                .to_csv(basename + '_' + str(count) + suffix, sep=separator, header=False, index=False, compression=self.compression)
+
+
+    def __division_with_modulo(self, total: int, divider: int):
+        rows_to_process = int(total/divider)
+        rows_left_over = total % divider
+
+        if rows_left_over == 0:
+            return [rows_to_process] * divider
+        else:
+            l = [rows_to_process] * (divider-1)
+            l.append(rows_to_process + rows_left_over)
+            return l
+
+
+    def __write_csvs(self, obj, basename, col_names, sort_by, exec_threads, delimiter):
+        logging.debug('Writing CSV files...')
+
+        # create a zip object so that generators are paired together
+        z = zip(*[x for x in obj['tables'].values()])
+
+        rows_chunk = self.__division_with_modulo(obj['count'], exec_threads)
+        procs = []
+        for i, rows in enumerate(rows_chunk):
+            output_file = basename + '_' + str(i)
+
+            p = mp.Process(target=self.worker, args=(
+                next(z), rows, output_file, col_names, sort_by, delimiter))
+            p.start()
+            procs.append(p)
+
+        # wait for all workers to exit
+        for p in procs:
+            p.join()
+
+    def generate(self, load, exec_threads: int, csv_dir: str, delimiter: str):
+        for table_name, table_details in load.items():
+            csv_file_basename = os.path.join(csv_dir, table_name)
+        logging.info("Generating dataset for table '%s'" % table_name)
+
+        for item in table_details:
+            col_names = list(item['tables'].keys())
+            sort_by = item.get('sort-by', [])
+            for col, col_details in item['tables'].items():
+                # get the list of simplefaker objects with different seeds
+                item['tables'][col] = self.__get_simplefaker_objects(
+                    col_details['type'], col_details['args'], item['count'], exec_threads)
+
+            self.__write_csvs(item, csv_file_basename + '.' +
+                       str(table_details.index(item)), col_names, sort_by, exec_threads, delimiter)
+            

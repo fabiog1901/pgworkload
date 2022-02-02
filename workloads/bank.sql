@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS ref_data (
     my_uuid UUID,
     my_choice VARCHAR,
     my_integer INT,
+    my_float FLOAT,
     my_timestamp TIMESTAMP,
     my_date DATE,
     my_time TIME,

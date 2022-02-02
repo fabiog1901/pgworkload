@@ -140,6 +140,37 @@ Check them out with
 pgworkload -h
 ```
 
+## Built-in Workloads
+
+`pgworkload` has the following workload already built-in and can be called without the need to pass a class file
+
+### Querybench
+
+Querybench runs a list of SQL Statements sequentially and iteratively.
+It assumes the schema and data have been created and loaded.
+
+SQL statements file `mystmts.sql`
+
+```sql
+select 1;
+select 
+version();
+-- select now();
+SELECT * 
+FROM my_table 
+WHERE id = 1234;
+```
+
+Run **Querybench** like this:
+
+```bash
+pgworkload --workload=querybench --args=mystmts.sql --url=<conn-string>
+```
+
+### Hovr
+
+Coming soon
+
 ## Acknowledgments
 
 Some methods and classes have been taken and modified from, or inspired by, <https://github.com/cockroachdb/movr>

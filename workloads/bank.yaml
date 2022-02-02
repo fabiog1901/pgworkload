@@ -1,5 +1,5 @@
 ref_data:
-  - count: 1000000
+  - count: 10
     sort-by:
       - my_sequence
     tables:
@@ -19,15 +19,21 @@ ref_data:
         type: choice
         args:
           population:
-            - Mon
-            - Tue
-            - Wed
-            - Thu
-            - Fri
-            - Sat
-            - Sun
-          weights: []
-            # None
+            - alpha
+            - bravo
+            - charlie
+            - delta
+            - echo
+            - foxtrot
+            - golf
+          weights: 
+            - 8
+            - 1
+            - 1
+            - 1
+            - 1
+            - 1
+            - 1 
           cum_weights: []
             # None
           seed: 0
@@ -36,6 +42,12 @@ ref_data:
         args:
           start: 1000
           end: 9999
+          seed: 0
+      my_float:
+        type: float
+        args:
+          max: 100000
+          round: 2
           seed: 0
       my_timestamp:
         type: timestamp
@@ -61,7 +73,7 @@ ref_data:
       # my_bytes:
       #   type: bytes
       #   args:
-      #     n: 1
+      #     n: 20
       #     seed: 0
       my_string:
         type: string

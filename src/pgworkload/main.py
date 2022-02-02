@@ -19,13 +19,11 @@ import http.server
 import socketserver
 import threading
 import numpy as np
-import pandas as pd
 from pgworkload.simplefaker import SimpleFaker
+from pgworkload import builtin_workloads
 import yaml
 
 DEFAULT_SLEEP = 5
-DEFAULT_SEED = 0
-CSV_MAX_ROWS = 1000000
 SUPPORTED_DBMS = ["PostgreSQL", "CockroachDB"]
 
 
@@ -137,16 +135,17 @@ def main():
         args.init_db = os.path.splitext(
             os.path.basename(args.workload))[0].lower()
 
-    # load args dict from file or string  
+    # load args dict from file or string
     if os.path.exists(args.args):
         with open(args.args, 'r') as f:
             args.args = yaml.safe_load(f)
     else:
-        args.args = yaml.safe_load(args.args)   
+        args.args = yaml.safe_load(args.args)
         if isinstance(args.args, str):
-            logging.error("The value passed to '--args' is not a valid JSON or a valid path to a JSON/YAML file: '%s'" % args.args)
+            logging.error(
+                "The value passed to '--args' is not a valid JSON or a valid path to a JSON/YAML file: '%s'" % args.args)
             sys.exit(1)
-    
+
     args.dburl = set_query_parameter(
         args.dburl, "application_name", args.app_name if args.app_name else workload.__name__)
     logging.info("URL: '%s'" % args.dburl)
@@ -263,6 +262,16 @@ def import_class_at_runtime(path: str):
     Returns:
         class: the imported class
     """
+    # check if path is one of the built-in workloads
+    try:
+        workload = getattr(builtin_workloads, path.lower().capitalize())
+        logging.info("Loading built-in workload '%s'" %
+                     path.lower().capitalize())
+        return workload
+    except AttributeError:
+        pass
+
+    # load the module at runtime
     sys.path.append(os.path.dirname(path))
     module_name = os.path.splitext(os.path.basename(path))[0]
 
@@ -390,91 +399,54 @@ def get_new_dburl(dburl: str, db_name: str):
         (scheme, netloc, path, query_string, fragment))
 
 
-def get_dbms(conn: psycopg.Connection):
-    with conn.cursor() as cur:
-        cur.execute("select version();")
-        v: str = cur.fetchone()[0]
-        x: str = v.split(" ")[0]
-        if x not in SUPPORTED_DBMS:
-            logging.error("Unknown DBMS: %s" % x)
-            sys.exit(1)
-        return x
+def get_dbms(dburl: str):
+    """Identify the DBMS technology
 
+    Args:
+        dburl: The connection string to the database
 
-def simplefaker_parser(obj: dict, count: int, exec_threads: int):
-    # extract all possible args for all possible types to avoid repetition
-
-    # date, time, timestamp, string.
-    start = obj.get('args').get('start')
-    end = obj.get('args').get('end')
-    format = obj.get('args').get('format')
-    micros = obj.get('args').get('micros')
-
-    # integer
-    min = obj.get('args').get('min')
-    max = obj.get('args').get('max')
-    n = obj.get('args').get('n')
-
-    # choice
-    population = obj.get('args').get('population')
-    weights = obj.get('args').get('weights')
-    cum_weights = obj.get('args').get('cum_weights')
-
-    # costant
-    value = obj.get('args').get('value')
-
-    # all types
-    seed = obj.get('args').get('seed', DEFAULT_SEED)
-
-    bitgens = [np.random.PCG64(x) for x in np.random.SeedSequence(
-        seed).spawn(exec_threads)]
-    otype = obj['type'].lower()
-
-    if otype == 'integer':
-        return [SimpleFaker.Integer(start, end, bitgen) for bitgen in bitgens]
-    elif otype == 'string':
-        return [SimpleFaker.String(min, max, bitgen) for bitgen in bitgens]
-    elif otype == 'bytes':
-        return [SimpleFaker.Bytes(n, bitgen) for bitgen in bitgens]
-    elif otype == 'choice':
-        return [SimpleFaker.Choice(population, bitgen, weights, cum_weights) for bitgen in bitgens]
-    elif otype == 'uuidv4':
-        return [SimpleFaker.UUIDv4(bitgen) for bitgen in bitgens]
-    elif otype == 'timestamp':
-        return [SimpleFaker.Timestamp(start, end, bitgen, format) for bitgen in bitgens]
-    elif otype == 'time':
-        return [SimpleFaker.Time(start, end, bitgen, micros) for bitgen in bitgens]
-    elif otype == 'date':
-        return [SimpleFaker.Date(start, end, bitgen, format) for bitgen in bitgens]
-    elif otype == 'costant':
-        return [SimpleFaker.Costant(value) for _ in bitgens]
-    elif otype == 'sequence':
-        div = int(count/exec_threads)
-        return [SimpleFaker.Sequence(div * x + start) for x in range(exec_threads)]
+    Returns:
+        str: the dmbs name (CockroachDB, PostgreSQL, ...)
+    """
+    try:
+        with psycopg.connect(dburl, autocommit=True) as conn:
+            with conn.cursor() as cur:
+                cur.execute("select version();")
+                v: str = cur.fetchone()[0]
+                x: str = v.split(" ")[0]
+                if x not in SUPPORTED_DBMS:
+                    logging.error("Unknown DBMS: %s" % x)
+                    sys.exit(1)
+                return x
+    except Exception as e:
+        logging.error(e)
+        sys.exit(1)
 
 
 def init(workload: object):
     logging.debug("Running init")
+    # PG or CRDB?
+    dbms: str = get_dbms(args.dburl)
 
     # PART 1 - CREATE THE SCHEMA
     if args.init_skip_create_schema:
         logging.debug("Skipping init_create_schema")
     else:
         init_create_schema(workload, args.dburl,
-                           args.init_drop, args.init_db, args.workload)
+                           args.init_drop, args.init_db, args.workload, dbms)
 
     # PART 2 - GENERATE THE DATA
     if args.init_skip_data_generation:
         logging.debug("Skipping init_generate_data")
     else:
-        init_generate_data(workload, args.concurrency, args.workload)
+        init_generate_data(workload, args.concurrency, args.workload, dbms)
 
     # PART 3 - IMPORT THE DATA
     dburl = get_new_dburl(args.dburl, args.init_db)
     if args.init_skip_data_import:
         logging.debug("Skipping init_import_data")
     else:
-        init_import_data(workload, dburl, args.workload)
+        init_import_data(workload, dburl, args.workload, dbms)
 
     # PART 4 - RUN WORKLOAD INIT
     logging.debug("Running workload.init()")
@@ -489,15 +461,13 @@ def init(workload: object):
         "Init completed. Please update your database connection url to '%s'" % dburl)
 
 
-def init_create_schema(workload: object, dburl: str, drop: bool, db_name: str, workload_path: str):
+def init_create_schema(workload: object, dburl: str, drop: bool, db_name: str, workload_path: str, dbms: str):
     # create the database according to the value passed in --init-db,
     # or use the workload name otherwise.
     # drop any existant database if --init-drop is True
     logging.debug("Running init_create_schema")
     try:
         with psycopg.connect(dburl, autocommit=True) as conn:
-            # pg or crdb?
-            dbms = get_dbms(conn)
             with conn.cursor() as cur:
                 if drop:
                     logging.debug("Dropping database '%s'" % db_name)
@@ -556,7 +526,7 @@ def init_create_schema(workload: object, dburl: str, drop: bool, db_name: str, w
         sys.exit(1)
 
 
-def init_generate_data(workload: object, exec_threads: int, workload_path: str):
+def init_generate_data(workload: object, exec_threads: int, workload_path: str, dbms: str):
     logging.debug("Running init_generate_data")
     # description of how to generate the data is in workload variable self.load
 
@@ -567,7 +537,7 @@ def init_generate_data(workload: object, exec_threads: int, workload_path: str):
         return
 
     # get the dirname to put the csv files
-    csv_dir = get_csv_files_dirname()
+    csv_dir: str = get_csv_files_dirname()
 
     # backup the current directory as to not override
     if os.path.isdir(csv_dir):
@@ -577,24 +547,15 @@ def init_generate_data(workload: object, exec_threads: int, workload_path: str):
     # create new directory
     os.mkdir(csv_dir)
 
+    # for CockroachDB, we want gzip files for faster network transfer
+    compression = 'gzip' if dbms == "CockroachDB" else None
+
     # generate the data by parsing the load variable
-    for table_name, table_details in load.items():
-        csv_file_basename = os.path.join(csv_dir, table_name)
-        logging.info("Generating dataset for table '%s'" % table_name)
-
-        for item in table_details:
-            col_names = list(item['tables'].keys())
-            sort_by = item.get('sort-by', [])
-            for col, obj in item['tables'].items():
-                # get the list of simplefaker objects with different seeds
-                item['tables'][col] = simplefaker_parser(
-                    obj, item['count'], exec_threads)
-
-            write_csvs(item, csv_file_basename + '.' +
-                       str(table_details.index(item)), col_names, sort_by)
+    SimpleFaker(compression=compression).generate(
+        load, exec_threads, csv_dir, args.delimiter)
 
 
-def init_import_data(workload, dburl, workload_path):
+def init_import_data(workload: object, dburl: str, workload_path: str, dbms: str):
     logging.debug("Running init_import_data")
 
     csv_dir = get_csv_files_dirname()
@@ -611,9 +572,6 @@ def init_import_data(workload, dburl, workload_path):
     try:
         with psycopg.connect(dburl, autocommit=True) as conn:
             with conn.cursor() as cur:
-                # PG or CRDB?
-                dbms = get_dbms(conn)
-
                 node_count = 1
                 if dbms == "CockroachDB":
                     # fetch the count of nodes that are part of the cluster
@@ -651,67 +609,6 @@ def init_import_data(workload, dburl, workload_path):
     except Exception as e:
         logging.error("Exception: %s" % (e))
         sys.exit(1)
-
-
-def init_worker(generators: tuple, iterations: int, basename: str, col_names: list, sort_by: list, separator: str):
-    logging.debug("Init worker created")
-    if iterations > CSV_MAX_ROWS:
-        count = int(iterations/CSV_MAX_ROWS)
-        rem = iterations % CSV_MAX_ROWS
-        iterations = CSV_MAX_ROWS
-    else:
-        count = 1
-        rem = 0
-
-    for x in range(count):
-        pd.DataFrame(
-            [row for row in [[next(x) for x in generators]
-                             for _ in range(iterations)]],
-            columns=col_names)\
-            .sort_values(by=sort_by)\
-            .to_csv(basename + '_' + str(x) + '.csv', sep=separator, header=False, index=False)
-
-    # remaining rows, if any
-    if rem > 0:
-        pd.DataFrame(
-            [row for row in [[next(x) for x in generators]
-                             for _ in range(rem)]],
-            columns=col_names)\
-            .sort_values(by=sort_by)\
-            .to_csv(basename + '_' + str(count) + '.csv', sep=separator, header=False, index=False)
-
-
-def division_with_modulo(total: int, divider: int):
-    rows_to_process = int(total/divider)
-    rows_left_over = total % divider
-
-    if rows_left_over == 0:
-        return [rows_to_process] * divider
-    else:
-        l = [rows_to_process] * (divider-1)
-        l.append(rows_to_process + rows_left_over)
-        return l
-
-
-def write_csvs(obj, basename, col_names, sort_by):
-    logging.debug('Writing CSV files...')
-
-    # create a zip object so that generators are paired together
-    z = zip(*[x for x in obj['tables'].values()])
-
-    rows_chunk = division_with_modulo(obj['count'], args.concurrency)
-    procs = []
-    for i, rows in enumerate(rows_chunk):
-        output_file = basename + '_' + str(i)
-
-        p = mp.Process(target=init_worker, args=(
-            next(z), rows, output_file, col_names, sort_by, args.delimiter))
-        p.start()
-        procs.append(p)
-
-    # wait for all workers to exit
-    for p in procs:
-        p.join()
 
 
 def worker(q: mp.Queue, kill_q: mp.JoinableQueue, dburl: str,
@@ -800,6 +697,3 @@ args = setup_parser()
 # setup global logging
 logging.basicConfig(level=getattr(logging, args.loglevel.upper(), logging.INFO),
                     format='%(asctime)s [%(levelname)s] (%(processName)s %(process)d) %(message)s')
-
-if __name__ == "__main__":
-    main()
