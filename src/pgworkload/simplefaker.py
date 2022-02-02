@@ -9,8 +9,6 @@ import uuid
 import pandas as pd
 import multiprocessing as mp
 import os
-import gzip
-
 
 
 class SimpleFaker:
@@ -19,7 +17,7 @@ class SimpleFaker:
         self.csv_max_rows = csv_max_rows
         self.seed = seed
         self.compression = compression
-        
+
     class Costant:
         """Iterator that counts upward forever."""
 
@@ -43,6 +41,7 @@ class SimpleFaker:
     class UUIDv4:
         """Iterator thar yields a UUIDv4
         """
+
         def __init__(self, bitgenerator: np.random.PCG64):
             self.bitgen: np.random.PCG64 = np.random.PCG64(
             ) if bitgenerator is None else bitgenerator
@@ -55,6 +54,7 @@ class SimpleFaker:
     class Timestamp:
         """Iterator that yields a Timestamp string
         """
+
         def __init__(self, start: str, end: str, bitgenerator: np.random.PCG64, format: str):
             self.format: str = '%Y-%m-%d %H:%M:%S.%f' if format is None else format
             self._start: str = '2022-01-01' if start is None else start
@@ -76,6 +76,7 @@ class SimpleFaker:
     class Date(Timestamp):
         """Iterator that yields a Date string
         """
+
         def __init__(self, start: str, end: str, bitgenerator: np.random.PCG64, format: str):
             self.format: str = '%Y-%m-%d' if format is None else format
             super().__init__(start=start, end=end, bitgenerator=bitgenerator, format=self.format)
@@ -83,6 +84,7 @@ class SimpleFaker:
     class Time(Timestamp):
         """Iterator that yields a Time string
         """
+
         def __init__(self, start: str, end: str, bitgenerator: np.random.PCG64, micros: bool):
             self.format: str = '%H:%M:%S' if not micros else '%H:%M:%S.%f'
             self._start: str = '07:30:00' if start is None else start
@@ -93,6 +95,7 @@ class SimpleFaker:
     class String:
         """Iterator that yields a random string of ascii characters
         """
+
         def __init__(self, min: int, max: int, bitgenerator: np.random.PCG64):
             self.min: int = 10 if min is None else min
             self.max: int = 50 if max is None else max
@@ -110,6 +113,7 @@ class SimpleFaker:
     class Integer:
         """Iterator that yields a random integer
         """
+
         def __init__(self, min: int, max: int, bitgenerator: np.random.PCG64):
             self.min: int = 1000 if min is None else min
             self.max: int = 9999 if max is None else max
@@ -120,10 +124,11 @@ class SimpleFaker:
 
         def __next__(self):
             return self.rng.integers(self.min, self.max)
-    
+
     class Float:
         """Iterator that yields a random float number
         """
+
         def __init__(self, max: int, round: int, bitgenerator: np.random.PCG64):
             self.max: int = 1000 if max is None else max
             self.round: int = 2 if round is None else round
@@ -134,10 +139,11 @@ class SimpleFaker:
 
         def __next__(self):
             return round(self.rng.random() * self.max, self.round)
-        
+
     class Bytes:
         """Iterator that yields a random byte array
         """
+
         def __init__(self, n: int, bitgenerator: np.random.PCG64):
             self.n: int = 1 if n is None else n
 
@@ -152,6 +158,7 @@ class SimpleFaker:
     class Choice:
         """Iterator that yields 1 item from a list
         """
+
         def __init__(self, population: list, bitgenerator: np.random.PCG64, weights: list, cum_weights: list):
             self.population: list = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri',
                                      'Sat', 'Sun'] if population is None else population
@@ -240,9 +247,9 @@ class SimpleFaker:
 
         bitgens = [np.random.PCG64(x) for x in np.random.SeedSequence(
             seed).spawn(exec_threads)]
-        
+
         type = type.lower()
-        
+
         if type == 'integer':
             return [SimpleFaker.Integer(start, end, bitgen) for bitgen in bitgens]
         elif type == 'float':
@@ -285,11 +292,11 @@ class SimpleFaker:
             suffix = '.csv'
         else:
             suffix = '.csv'
-            
+
         for x in range(count):
             pd.DataFrame(
                 [row for row in [[next(x) for x in generators]
-                                for _ in range(iterations)]],
+                                 for _ in range(iterations)]],
                 columns=col_names)\
                 .sort_values(by=sort_by)\
                 .to_csv(basename + '_' + str(x) + suffix, sep=separator, header=False, index=False, compression=self.compression)
@@ -298,11 +305,10 @@ class SimpleFaker:
         if rem > 0:
             pd.DataFrame(
                 [row for row in [[next(x) for x in generators]
-                                for _ in range(rem)]],
+                                 for _ in range(rem)]],
                 columns=col_names)\
                 .sort_values(by=sort_by)\
                 .to_csv(basename + '_' + str(count) + suffix, sep=separator, header=False, index=False, compression=self.compression)
-
 
     def __division_with_modulo(self, total: int, divider: int):
         rows_to_process = int(total/divider)
@@ -314,7 +320,6 @@ class SimpleFaker:
             l = [rows_to_process] * (divider-1)
             l.append(rows_to_process + rows_left_over)
             return l
-
 
     def __write_csvs(self, obj, basename, col_names, sort_by, exec_threads, delimiter):
         logging.debug('Writing CSV files...')
@@ -350,5 +355,4 @@ class SimpleFaker:
                     col_details['type'], col_details['args'], item['count'], exec_threads)
 
             self.__write_csvs(item, csv_file_basename + '.' +
-                       str(table_details.index(item)), col_names, sort_by, exec_threads, delimiter)
-            
+                              str(table_details.index(item)), col_names, sort_by, exec_threads, delimiter)
