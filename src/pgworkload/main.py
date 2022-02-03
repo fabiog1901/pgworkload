@@ -17,7 +17,6 @@ import urllib
 import importlib
 import http.server
 import socketserver
-import threading
 import numpy as np
 from pgworkload.simplefaker import SimpleFaker
 from pgworkload import builtin_workloads
@@ -26,11 +25,11 @@ import yaml
 DEFAULT_SLEEP = 5
 SUPPORTED_DBMS = ["PostgreSQL", "CockroachDB"]
 
-
-class QuietServer(http.server.SimpleHTTPRequestHandler):
+  
+class QuietServerHandler(http.server.SimpleHTTPRequestHandler):
     """SimpleHTTPRequestHandler that doesn't output any log
     """
-
+   
     def log_message(self, format, *args):
         pass
 
@@ -218,16 +217,17 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
-def httpserver(path, port=8000):
+def httpserver(path, port=3000):
     """Create simple http server
 
     Args:
         path (string): The directory to serve files from
-        port (int, optional): The http server listening port. Defaults to 8000.
+        port (int, optional): The http server listening port. Defaults to 3000.
     """
     os.chdir(path)
+    
     try:
-        with socketserver.TCPServer(("", 3000), QuietServer) as httpd:
+        with socketserver.TCPServer(server_address=("", port), RequestHandlerClass=QuietServerHandler) as httpd:
             httpd.serve_forever()
     except OSError as e:
         logging.error(e)
@@ -561,13 +561,10 @@ def init_import_data(workload: object, dburl: str, workload_path: str, dbms: str
     csv_dir = get_csv_files_dirname()
     load = get_workload_load(workload, workload_path)
 
-    # Start the http server in a new thread
-    threading.Thread(name='httpserver', target=httpserver,
-                     args=(csv_dir, 3000), daemon=True).start()
+    # Start the http server in a new Process
+    mp.Process(target=httpserver, args=(csv_dir, 3000), daemon=True).start()
 
-    # import each file in batches of <number-of-nodes-in-the-cluster>
-    # the httpserver has changed the current directory to 'csv_dir'
-    csv_files = os.listdir()
+    csv_files = os.listdir(csv_dir)
 
     try:
         with psycopg.connect(dburl, autocommit=True) as conn:
