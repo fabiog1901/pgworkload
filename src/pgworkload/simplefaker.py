@@ -13,18 +13,25 @@ import os
 
 class SimpleFaker:
 
-    def __init__(self, csv_max_rows: int = 1000000, seed: int = 0, compression: str = 'gzip'):
-        self.csv_max_rows = csv_max_rows
-        self.seed = seed
-        self.compression = compression
+    def __init__(self, seed: int, csv_max_rows: int = 1000000, compression: str = 'gzip'):
+        self.csv_max_rows: int = csv_max_rows
+        self.compression: str = compression
+        self.rng: np.random.Generator = np.random.default_rng(seed=seed)
 
     class Costant:
         """Iterator that counts upward forever."""
 
-        def __init__(self, value: str):
+        def __init__(self, value: str, null_pct: float, bitgenerator: np.random.PCG64):
             self.value: str = 'simplefaker' if value is None else value
+            self.bitgen: np.random.PCG64 = np.random.PCG64(
+            ) if bitgenerator is None else bitgenerator
+
+            self.null_pct: float = 0.0 if null_pct is None else null_pct
+            self.rng: np.random.Generator = np.random.Generator(self.bitgen)
 
         def __next__(self):
+            if self.rng.random() < self.null_pct:
+                return ''
             return self.value
 
     class Sequence:
@@ -42,20 +49,28 @@ class SimpleFaker:
         """Iterator thar yields a UUIDv4
         """
 
-        def __init__(self, bitgenerator: np.random.PCG64):
+        def __init__(self, null_pct: float, bitgenerator: np.random.PCG64, array: int):
             self.bitgen: np.random.PCG64 = np.random.PCG64(
             ) if bitgenerator is None else bitgenerator
 
+            self.null_pct: float = 0.0 if null_pct is None else null_pct
             self.rng: np.random.Generator = np.random.Generator(self.bitgen)
 
         def __next__(self):
+            if self.rng.random() < self.null_pct:
+                return ''
             return uuid.UUID(bytes=self.rng.bytes(16), version=4)
+            # else:
+            #     if not self.array:
+            #         return uuid.UUID(bytes=self.rng.bytes(16), version=4)
+            #     else:
+            #         return 'ARRAY[' + ','.join(x for x in ["'%s'" % str(uuid.UUID(bytes=self.rng.bytes(16), version=4)) for _ in range(self.array)]) + ']'
 
     class Timestamp:
         """Iterator that yields a Timestamp string
         """
 
-        def __init__(self, start: str, end: str, bitgenerator: np.random.PCG64, format: str):
+        def __init__(self, start: str, end: str, format: str, null_pct: float, bitgenerator: np.random.PCG64):
             self.format: str = '%Y-%m-%d %H:%M:%S.%f' if format is None else format
             self._start: str = '2022-01-01' if start is None else start
             self._end: str = '2022-12-31' if end is None else end
@@ -65,38 +80,42 @@ class SimpleFaker:
             self.end: float = dt.datetime.fromisoformat(
                 self._end).timestamp() * 1000000
 
+            self.null_pct: float = 0.0 if null_pct is None else null_pct
             self.bitgen: np.random.PCG64 = np.random.PCG64(
             ) if bitgenerator is None else bitgenerator
 
             self.rng: np.random.Generator = np.random.Generator(self.bitgen)
 
         def __next__(self):
+            if self.rng.random() < self.null_pct:
+                return ''
             return dt.datetime.fromtimestamp(self.rng.integers(self.start, self.end)/1000000).strftime(self.format)
 
     class Date(Timestamp):
         """Iterator that yields a Date string
         """
 
-        def __init__(self, start: str, end: str, bitgenerator: np.random.PCG64, format: str):
+        def __init__(self, start: str, end: str, format: str, null_pct: float, bitgenerator: np.random.PCG64):
             self.format: str = '%Y-%m-%d' if format is None else format
-            super().__init__(start=start, end=end, bitgenerator=bitgenerator, format=self.format)
+            super().__init__(start=start, end=end, format=self.format,
+                             null_pct=null_pct, bitgenerator=bitgenerator)
 
     class Time(Timestamp):
         """Iterator that yields a Time string
         """
 
-        def __init__(self, start: str, end: str, bitgenerator: np.random.PCG64, micros: bool):
+        def __init__(self, start: str, end: str, micros: bool, null_pct: float, bitgenerator: np.random.PCG64):
             self.format: str = '%H:%M:%S' if not micros else '%H:%M:%S.%f'
             self._start: str = '07:30:00' if start is None else start
             self._end: str = '15:30:00' if end is None else end
             super().__init__(start='1970-01-01 ' + self._start,
-                             end='1970-01-01 ' + self._end, bitgenerator=bitgenerator, format=self.format)
+                             end='1970-01-01 ' + self._end, format=self.format, null_pct=null_pct, bitgenerator=bitgenerator)
 
     class String:
         """Iterator that yields a random string of ascii characters
         """
 
-        def __init__(self, min: int, max: int, bitgenerator: np.random.PCG64):
+        def __init__(self, min: int, max: int, null_pct: float, bitgenerator: np.random.PCG64):
             self.min: int = 10 if min is None else min
             self.max: int = 50 if max is None else max
             self.letters: np.array = np.array(
@@ -104,9 +123,12 @@ class SimpleFaker:
             self.bitgen: np.random.PCG64 = np.random.PCG64(
             ) if bitgenerator is None else bitgenerator
 
+            self.null_pct: float = 0.0 if null_pct is None else null_pct
             self.rng: np.random.Generator = np.random.Generator(self.bitgen)
 
         def __next__(self):
+            if self.rng.random() < self.null_pct:
+                return ''
             return ''.join(self.rng.choice(self.letters,
                                            size=(self.min if self.min == self.max else self.rng.integers(self.min, self.max))))
 
@@ -114,52 +136,68 @@ class SimpleFaker:
         """Iterator that yields a random integer
         """
 
-        def __init__(self, min: int, max: int, bitgenerator: np.random.PCG64):
+        def __init__(self, min: int, max: int, null_pct: float, bitgenerator: np.random.PCG64):
             self.min: int = 1000 if min is None else min
             self.max: int = 9999 if max is None else max
             self.bitgen: np.random.PCG64 = np.random.PCG64(
             ) if bitgenerator is None else bitgenerator
 
+            self.null_pct: float = 0.0 if null_pct is None else null_pct
             self.rng: np.random.Generator = np.random.Generator(self.bitgen)
 
         def __next__(self):
+            if self.rng.random() < self.null_pct:
+                return ''
             return self.rng.integers(self.min, self.max)
+
+    class Bool(Integer):
+        """Iterator that yields a random boolean (0, 1)
+        """
+
+        def __init__(self, null_pct: float, bitgenerator: np.random.PCG64):
+            super().__init__(min=0, max=1, null_pct=null_pct, bitgenerator=bitgenerator)
 
     class Float:
         """Iterator that yields a random float number
         """
 
-        def __init__(self, max: int, round: int, bitgenerator: np.random.PCG64):
+        def __init__(self, max: int, round: int, null_pct: float, bitgenerator: np.random.PCG64):
             self.max: int = 1000 if max is None else max
             self.round: int = 2 if round is None else round
             self.bitgen: np.random.PCG64 = np.random.PCG64(
             ) if bitgenerator is None else bitgenerator
 
+            self.null_pct: float = 0.0 if null_pct is None else null_pct
             self.rng: np.random.Generator = np.random.Generator(self.bitgen)
 
         def __next__(self):
+            if self.rng.random() < self.null_pct:
+                return ''
             return round(self.rng.random() * self.max, self.round)
 
     class Bytes:
         """Iterator that yields a random byte array
         """
 
-        def __init__(self, n: int, bitgenerator: np.random.PCG64):
+        def __init__(self, n: int, null_pct: float, bitgenerator: np.random.PCG64):
             self.n: int = 1 if n is None else n
 
             self.bitgen: np.random.PCG64 = np.random.PCG64(
             ) if bitgenerator is None else bitgenerator
 
+            self.null_pct: float = 0.0 if null_pct is None else null_pct
             self.rng: np.random.Generator = np.random.Generator(self.bitgen)
 
         def __next__(self):
+            if self.rng.random() < self.null_pct:
+                return ''
             return self.rng.bytes(self.n)
 
     class Choice:
         """Iterator that yields 1 item from a list
         """
 
-        def __init__(self, population: list, bitgenerator: np.random.PCG64, weights: list, cum_weights: list):
+        def __init__(self, population: list, weights: list, cum_weights: list, null_pct: float, bitgenerator: np.random.PCG64):
             self.population: list = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri',
                                      'Sat', 'Sun'] if population is None else population
             self.weights: list = None if not weights else weights
@@ -168,12 +206,15 @@ class SimpleFaker:
             self.bitgen: np.random.PCG64 = np.random.PCG64(
             ) if bitgenerator is None else bitgenerator
 
+            self.null_pct: float = 0.0 if null_pct is None else null_pct
             self.rng: np.random.PCG64 = np.random.Generator(self.bitgen)
 
         def __next__(self):
-            return self.choices(self.population, weights=self.weights, cum_weights=self.cum_weights)[0]
+            if self.rng.random() < self.null_pct:
+                return ''
+            return self.__choices(self.population, weights=self.weights, cum_weights=self.cum_weights)[0]
 
-        def choices(self, population, weights=None, *, cum_weights=None, k=1):
+        def __choices(self, population, weights=None, *, cum_weights=None, k=1):
             """Return a k sized list of population elements chosen with replacement.
             If the relative weights or cumulative weights are not specified,
             the selections are made with equal probability.
@@ -223,6 +264,9 @@ class SimpleFaker:
 
         # Extract all possible args for all possible types to avoid repetition
         # date, time, timestamp, string.
+        array: int = args.get('array', 0)
+        null_pct: float = args.get('null_pct', 0.0)
+
         start = args.get('start')
         end = args.get('end')
         format = args.get('format')
@@ -243,7 +287,7 @@ class SimpleFaker:
         value = args.get('value')
 
         # all types
-        seed = args.get('seed', self.seed)
+        seed = args.get('seed', self.rng.integers(0, 1000000000))
 
         bitgens = [np.random.PCG64(x) for x in np.random.SeedSequence(
             seed).spawn(exec_threads)]
@@ -251,28 +295,33 @@ class SimpleFaker:
         type = type.lower()
 
         if type == 'integer':
-            return [SimpleFaker.Integer(start, end, bitgen) for bitgen in bitgens]
-        elif type == 'float':
-            return [SimpleFaker.Float(max, round, bitgen) for bitgen in bitgens]
+            return [SimpleFaker.Integer(min=min, max=max, null_pct=null_pct, bitgenerator=bitgen) for bitgen in bitgens]
+        elif type in ['float', 'decimal']:
+            return [SimpleFaker.Float(max=max, round=round, null_pct=null_pct, bitgenerator=bitgen) for bitgen in bitgens]
+        elif type == 'bool':
+            return [SimpleFaker.Bool(null_pct, bitgen) for bitgen in bitgens]
         elif type == 'string':
-            return [SimpleFaker.String(min, max, bitgen) for bitgen in bitgens]
+            return [SimpleFaker.String(min, max, null_pct, bitgen) for bitgen in bitgens]
         elif type == 'bytes':
-            return [SimpleFaker.Bytes(n, bitgen) for bitgen in bitgens]
+            return [SimpleFaker.Bytes(n, null_pct, bitgen) for bitgen in bitgens]
         elif type == 'choice':
-            return [SimpleFaker.Choice(population, bitgen, weights, cum_weights) for bitgen in bitgens]
-        elif type == 'uuidv4':
-            return [SimpleFaker.UUIDv4(bitgen) for bitgen in bitgens]
+            return [SimpleFaker.Choice(population, weights, cum_weights, null_pct, bitgen) for bitgen in bitgens]
+        elif type in ['uuidv4', 'uuid']:
+            return [SimpleFaker.UUIDv4(null_pct, bitgen, array) for bitgen in bitgens]
         elif type == 'timestamp':
-            return [SimpleFaker.Timestamp(start, end, bitgen, format) for bitgen in bitgens]
+            return [SimpleFaker.Timestamp(start, end, format, null_pct, bitgen) for bitgen in bitgens]
         elif type == 'time':
-            return [SimpleFaker.Time(start, end, bitgen, micros) for bitgen in bitgens]
+            return [SimpleFaker.Time(start, end, micros, null_pct, bitgen) for bitgen in bitgens]
         elif type == 'date':
-            return [SimpleFaker.Date(start, end, bitgen, format) for bitgen in bitgens]
+            return [SimpleFaker.Date(start, end, format, null_pct, bitgen) for bitgen in bitgens]
         elif type == 'costant':
-            return [SimpleFaker.Costant(value) for _ in bitgens]
+            return [SimpleFaker.Costant(value, null_pct, bitgen) for bitgen in bitgens]
         elif type == 'sequence':
             div = int(count/exec_threads)
             return [SimpleFaker.Sequence(div * x + start) for x in range(exec_threads)]
+        else:
+            raise ValueError(
+                f"SimpleFaker type not implemented or recognized: '{type}'")
 
     def worker(self, generators: tuple, iterations: int, basename: str, col_names: list, sort_by: list, separator: str):
         logging.debug("SimpleFaker worker created")
