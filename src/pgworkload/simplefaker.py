@@ -9,11 +9,12 @@ import uuid
 import pandas as pd
 import multiprocessing as mp
 import os
+import csv
 
 
 class SimpleFaker:
 
-    def __init__(self, seed: int, csv_max_rows: int = 1000000, compression: str = 'gzip'):
+    def __init__(self, seed: int = None, csv_max_rows: int = 1000000, compression: str = 'gzip'):
         self.csv_max_rows: int = csv_max_rows
         self.compression: str = compression
         self.rng: np.random.Generator = np.random.default_rng(seed=seed)
@@ -116,8 +117,8 @@ class SimpleFaker:
         """
 
         def __init__(self, min: int, max: int, null_pct: float, bitgenerator: np.random.PCG64):
-            self.min: int = 10 if min is None else min
-            self.max: int = 50 if max is None else max
+            self.min: int = 10 if min is None or min < 0 else min
+            self.max: int = 50 if max is None or max < self.min else max
             self.letters: np.array = np.array(
                 [char for char in string.ascii_letters])
             self.bitgen: np.random.PCG64 = np.random.PCG64(
@@ -132,6 +133,22 @@ class SimpleFaker:
             return ''.join(self.rng.choice(self.letters,
                                            size=(self.min if self.min == self.max else self.rng.integers(self.min, self.max))))
 
+    class Json(String):
+        """Iterator that yields a simple json string
+        """
+        def __init__(self, min_num: int, max_num: int, null_pct: float, bitgenerator: np.random.PCG64):
+            # 9 is the number of characters in the hardcoded string
+            self.min = 10 if min_num is None else max(min_num-9, 1)
+            self.max = 50 if max_num is None else max(max_num-9, 2)
+            super().__init__(min=self.min, max=self.max,
+                             null_pct=null_pct, bitgenerator=bitgenerator)
+        
+        def __next__(self):
+            v = super().__next__()
+            if not v:
+                return ''
+            return '{"k":"%s"}' % v
+        
     class Integer:
         """Iterator that yields a random integer
         """
@@ -302,6 +319,8 @@ class SimpleFaker:
             return [SimpleFaker.Bool(null_pct, bitgen) for bitgen in bitgens]
         elif type == 'string':
             return [SimpleFaker.String(min, max, null_pct, bitgen) for bitgen in bitgens]
+        elif type in ['json', 'jsonb']:
+            return [SimpleFaker.Json(min, max, null_pct, bitgen) for bitgen in bitgens]
         elif type == 'bytes':
             return [SimpleFaker.Bytes(n, null_pct, bitgen) for bitgen in bitgens]
         elif type == 'choice':
@@ -348,7 +367,7 @@ class SimpleFaker:
                                  for _ in range(iterations)]],
                 columns=col_names)\
                 .sort_values(by=sort_by)\
-                .to_csv(basename + '_' + str(x) + suffix, sep=separator, header=False, index=False, compression=self.compression)
+                .to_csv(basename + '_' + str(x) + suffix, quoting=csv.QUOTE_NONE , sep=separator, header=False, index=False, compression=self.compression)
 
         # remaining rows, if any
         if rem > 0:
@@ -390,7 +409,7 @@ class SimpleFaker:
         for p in procs:
             p.join()
 
-    def generate(self, load, exec_threads: int, csv_dir: str, delimiter: str):
+    def generate(self, load: dict, exec_threads: int, csv_dir: str, delimiter: str):
         for table_name, table_details in load.items():
             csv_file_basename = os.path.join(csv_dir, table_name)
         logging.info("Generating dataset for table '%s'" % table_name)
