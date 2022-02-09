@@ -1,4 +1,8 @@
 import yaml
+import http.server
+import time
+import tabulate
+import numpy as np
 
 RESERVED_WORDS = ['unique', 'inverted', 'index', 'constraint',
                   'family', 'like', 'primary', 'key',
@@ -8,6 +12,85 @@ RESERVED_WORDS = ['unique', 'inverted', 'index', 'constraint',
                   'visible', 'using', 'hash' 'with', 'bucket_count']
 
 DEFAULT_ARRAY_COUNT = 3
+
+class QuietServerHandler(http.server.SimpleHTTPRequestHandler):
+    """SimpleHTTPRequestHandler that doesn't output any log
+    """
+   
+    def log_message(self, format, *args):
+        pass
+
+
+class Stats:
+    def __init__(self, frequency):
+        self.cumulative_counts = {}
+        self.instantiation_time = time.time()
+        self.frequency = frequency
+        self.new_window()
+
+    # reset stats while keeping cumulative counts
+    def new_window(self):
+        try:
+            self.window_start_time = time.time()
+            self.window_stats = {}
+        finally:
+            pass
+
+    # add one latency measurement in seconds
+    def add_latency_measurement(self, action, measurement):
+        try:
+            self.window_stats.setdefault(action, []).append(measurement)
+            self.cumulative_counts.setdefault(action, 0)
+            self.cumulative_counts[action] += 1
+        finally:
+            pass
+
+    # print the current stats this instance has collected.
+    # If action_list is empty, it will only prevent rows it has captured this period, otherwise it will print a row for each action.
+    def print_stats(self, action_list=[]):
+        def get_percentile_measurement(action, percentile):
+            return np.percentile(self.window_stats.setdefault(action, [0]), percentile)
+
+        def get_stats_row(action):
+            elapsed = time.time() - self.instantiation_time
+
+            if action in self.window_stats:
+                return [action,
+                        round(elapsed, 0),
+                        self.cumulative_counts[action],
+                        round(self.cumulative_counts[action] / elapsed, 2),
+                        len(self.window_stats[action]),
+                        round(
+                            len(self.window_stats[action]) / self.frequency, 2),
+                        round(
+                            float(np.mean(self.window_stats[action]) * 1000), 2),
+                        round(float(get_percentile_measurement(
+                            action, 50)) * 1000, 2),
+                        round(float(get_percentile_measurement(
+                            action, 90)) * 1000, 2),
+                        round(float(get_percentile_measurement(
+                            action, 95)) * 1000, 2),
+                        round(float(get_percentile_measurement(
+                            action, 99)) * 1000, 2),
+                        round(float(get_percentile_measurement(
+                            action, 100)) * 1000, 2)]
+            else:
+                return [action, round(elapsed, 0), self.cumulative_counts.get(action, 0), 0, 0, 0, 0, 0, 0]
+
+        header = ["id", "elapsed",  "tot_ops", "tot_ops/s",
+                  "period_ops", "period_ops/s", "mean(ms)",  "p50(ms)", "p90(ms)", "p95(ms)", "p99(ms)", "pMax(ms)"]
+        rows = []
+
+        try:
+            if len(action_list):
+                for action in sorted(action_list):
+                    rows.append(get_stats_row(action))
+            else:
+                for action in sorted(list(self.window_stats)):
+                    rows.append(get_stats_row(action))
+            print(tabulate.tabulate(rows, header), "\n")
+        finally:
+            pass
 
 
 def get_type_and_args(datatypes: list):
