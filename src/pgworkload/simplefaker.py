@@ -434,7 +434,7 @@ class SimpleFaker:
         for i, rows in enumerate(rows_chunk):
             output_file = basename + '_' + str(i)
 
-            p = mp.Process(target=self.worker, args=(
+            p = mp.Process(target=self.worker, daemon=True, args=(
                 next(z), rows, output_file, col_names, sort_by, delimiter))
             p.start()
             procs.append(p)
