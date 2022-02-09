@@ -389,7 +389,7 @@ class SimpleFaker:
         if self.compression == 'gzip':
             suffix = '.csv.gz'
         elif self.compression == 'zip':
-            suffix = 'csv.zip'
+            suffix = '.csv.zip'
         elif self.compression == None:
             suffix = '.csv'
         else:
@@ -444,17 +444,19 @@ class SimpleFaker:
             p.join()
 
     def generate(self, load: dict, exec_threads: int, csv_dir: str, delimiter: str):
+
         for table_name, table_details in load.items():
             csv_file_basename = os.path.join(csv_dir, table_name)
-        logging.info("Generating dataset for table '%s'" % table_name)
 
-        for item in table_details:
-            col_names = list(item['tables'].keys())
-            sort_by = item.get('sort-by', [])
-            for col, col_details in item['tables'].items():
-                # get the list of simplefaker objects with different seeds
-                item['tables'][col] = self.__get_simplefaker_objects(
-                    col_details['type'], col_details['args'], item['count'], exec_threads)
+            logging.info("Generating dataset for table '%s'" % table_name)
 
-            self.__write_csvs(item, csv_file_basename + '.' +
-                              str(table_details.index(item)), col_names, sort_by, exec_threads, delimiter)
+            for item in table_details:
+                col_names = list(item['tables'].keys())
+                sort_by = item.get('sort-by', [])
+                for col, col_details in item['tables'].items():
+                    # get the list of simplefaker objects with different seeds
+                    item['tables'][col] = self.__get_simplefaker_objects(
+                        col_details['type'], col_details['args'], item['count'], exec_threads)
+
+                self.__write_csvs(item, csv_file_basename + '.' +
+                                  str(table_details.index(item)), col_names, sort_by, exec_threads, delimiter)
