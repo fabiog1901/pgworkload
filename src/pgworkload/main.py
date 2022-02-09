@@ -11,116 +11,100 @@ import random
 import re
 import signal
 import sys
-import tabulate
 import time
 import urllib
 import importlib
-import http.server
 import socketserver
-import numpy as np
 from pgworkload.simplefaker import SimpleFaker
 from pgworkload import builtin_workloads
 import yaml
+import pgworkload.util
+import traceback
 
 DEFAULT_SLEEP = 5
 SUPPORTED_DBMS = ["PostgreSQL", "CockroachDB"]
 
-  
-class QuietServerHandler(http.server.SimpleHTTPRequestHandler):
-    """SimpleHTTPRequestHandler that doesn't output any log
-    """
-   
-    def log_message(self, format, *args):
-        pass
 
+def setup_parser():
+    parser = argparse.ArgumentParser()
+    
+    subparsers = parser.add_subparsers(help='sub-command help')
+    
+    # Util
+    subparser_gen = subparsers.add_parser('gen', help='generate auxiliary files')
+    subparser_gen.add_argument('--from-ddl', dest='from_ddl', type=str, default='',
+                               help='Read DDL SQL file and generates YAML data generation file')
+    subparser_gen.add_argument('--from-yaml', dest='from_yaml', type=str, default='',
+                               help='Read YAML data generation file and generate CSV files')
+    subparser_gen.add_argument('--output-yaml', dest='output_yaml', type=str, default='',
+                               help='Filepath for the generated YAML file')
+    subparser_gen.add_argument('--output-csv-dir', dest='output_csv_dir', type=str, default='',
+                               help='Output directory for the CSV files')
+    
+    # main
+    parser.add_argument('--url', dest='dburl', default='postgres://root@localhost:26257/defaultdb?sslmode=disable',
+                        help="The connection string to the database. Default is 'postgres://root@localhost:26257/defaultdb?sslmode=disable'")
+    parser.add_argument('--app-name', dest='app_name',
+                        help='The name that can be used for filtering statements by client in the DB Console')
+    parser.add_argument("--concurrency", dest="concurrency",
+                        help="Number of concurrent workers (default 1)", default=1, type=int)
+    parser.add_argument("--iterations", dest="iterations", default=0, type=int,
+                        help="Total number of iterations (default=0 --> ad infinitum)")
+    parser.add_argument("--duration", dest="duration", default=0, type=int,
+                        help="Duration in seconds (default=0 --> ad infinitum)")
 
-class Stats:
-    def __init__(self, frequency):
-        self.cumulative_counts = {}
-        self.instantiation_time = time.time()
-        # self.mutex = threading.Lock()
-        self.frequency = frequency
-        self.new_window()
+    # initialization args
+    parser.add_argument('--init', default=False, dest='init', action=argparse.BooleanOptionalAction,
+                        help="Run a one-off initialization step")
+    parser.add_argument('--init-drop', default=False, dest='init_drop', action=argparse.BooleanOptionalAction,
+                        help="On initialization, drop the database if it exists")
+    parser.add_argument('--init-db', default='', dest='init_db', type=str,
+                        help="On initialization, override the default db name. Defaults to value passed in --workload-class or, if absent, --workload")
+    parser.add_argument('--init-delimiter', default='\t', dest='delimiter',
+                        help="On initialization, the delimeter char to use for the CSV files. Defaults = '\t'")
+    parser.add_argument('--init-skip-create-schema', default=False, dest='init_skip_create_schema', action=argparse.BooleanOptionalAction,
+                        help="On initialization, don't run the schema creation script")
+    parser.add_argument('--init-skip-data-generation', default=False, dest='init_skip_data_generation', action=argparse.BooleanOptionalAction,
+                        help="On initialization, don't generate the CSV data files")
+    parser.add_argument('--init-skip-data-import', default=False, dest='init_skip_data_import', action=argparse.BooleanOptionalAction,
+                        help="On initialization, don't import")
+    # other params
+    parser.add_argument('--log-level', dest='loglevel', default='info',
+                        help='The log level ([debug|info|warning|error]). (default = info)')
+    parser.add_argument('--conn-duration', dest='conn_duration', type=int, default=0,
+                        help='The number of seconds to keep database connections alive before resetting them (default=0 --> ad infinitum)')
+    parser.add_argument('--stats-frequency', dest='frequency', type=int, default=10,
+                        help='How often to display the stats in seconds (default=10). Set 0 to suppress stats printing')
+    parser.add_argument('--workload', dest='workload', #required=True,
+                        help="Path to the workload module. Eg: workloads/bank.py for class 'Bank'")
+    parser.add_argument('--args', dest='args', default='{}',
+                        help='JSON string, or filepath to a JSON/YAML string, to pass to Workload at runtime')
 
-    # reset stats while keeping cumulative counts
-    def new_window(self):
-        # self.mutex.acquire()
-        try:
-            self.window_start_time = time.time()
-            self.window_stats = {}
-        finally:
-            pass
-            # self.mutex.release()
-
-    # add one latency measurement in seconds
-    def add_latency_measurement(self, action, measurement):
-        # self.mutex.acquire()
-        try:
-            self.window_stats.setdefault(action, []).append(measurement)
-            self.cumulative_counts.setdefault(action, 0)
-            self.cumulative_counts[action] += 1
-        finally:
-            pass
-            # self.mutex.release()
-
-    # print the current stats this instance has collected.
-    # If action_list is empty, it will only prevent rows it has captured this period, otherwise it will print a row for each action.
-    def print_stats(self, action_list=[]):
-        def get_percentile_measurement(action, percentile):
-            return np.percentile(self.window_stats.setdefault(action, [0]), percentile)
-
-        def get_stats_row(action):
-            elapsed = time.time() - self.instantiation_time
-
-            if action in self.window_stats:
-                return [action,
-                        round(elapsed, 0),
-                        self.cumulative_counts[action],
-                        round(self.cumulative_counts[action] / elapsed, 2),
-                        len(self.window_stats[action]),
-                        round(
-                            len(self.window_stats[action]) / self.frequency, 2),
-                        round(
-                            float(np.mean(self.window_stats[action]) * 1000), 2),
-                        round(float(get_percentile_measurement(
-                            action, 50)) * 1000, 2),
-                        round(float(get_percentile_measurement(
-                            action, 90)) * 1000, 2),
-                        round(float(get_percentile_measurement(
-                            action, 95)) * 1000, 2),
-                        round(float(get_percentile_measurement(
-                            action, 99)) * 1000, 2),
-                        round(float(get_percentile_measurement(
-                            action, 100)) * 1000, 2)]
-            else:
-                return [action, round(elapsed, 0), self.cumulative_counts.get(action, 0), 0, 0, 0, 0, 0, 0]
-
-        header = ["id", "elapsed",  "tot_ops", "tot_ops/s",
-                  "period_ops", "period_ops/s", "mean(ms)",  "p50(ms)", "p90(ms)", "p95(ms)", "p99(ms)", "pMax(ms)"]
-        rows = []
-
-        # self.mutex.acquire()
-        try:
-            if len(action_list):
-                for action in sorted(action_list):
-                    rows.append(get_stats_row(action))
-            else:
-                for action in sorted(list(self.window_stats)):
-                    rows.append(get_stats_row(action))
-            print(tabulate.tabulate(rows, header), "\n")
-        finally:
-            pass
-            # self.mutex.release()
+    return parser.parse_args()
 
 
 def main():
     global stats
 
     signal.signal(signal.SIGINT, signal_handler)
+   
+    try:
+        if args.from_ddl:
+            pgworkload.util.ddl_to_yaml(args.from_ddl, args.output_yaml)
+            sys.exit(0)
+        
+        if args.from_yaml:
+            with open(args.from_yaml, 'r') as f:
+                load = yaml.safe_load(f.read())
 
+            SimpleFaker().generate(load, args.concurrency, args.output_csv_dir,  args.delimiter)
+            sys.exit(0)
+    except:
+        pass
+        
     workload = import_class_at_runtime(args.workload)
-
-    stats = Stats(frequency=args.frequency)
+    
+    stats = pgworkload.util.Stats(frequency=args.frequency)
 
     if not re.search(r'.*://.*/(.*)\?', args.dburl):
         logging.error(
@@ -155,13 +139,15 @@ def main():
 
     q = mp.Queue(maxsize=1000)
     global kill_q
-    kill_q = mp.JoinableQueue()
+    kill_q = mp.Queue()
+    global kill_q2
+    kill_q2 = mp.Queue()
 
     c = 0
 
     for _ in range(args.concurrency):
-        mp.Process(target=worker, args=(
-            q, kill_q, args.dburl, workload, args.args, args.iterations, args.duration, args.conn_duration)).start()
+        mp.Process(target=worker, daemon=True, args=(
+            q, kill_q, kill_q2, args.dburl, workload, args.args, args.iterations, args.duration, args.conn_duration)).start()
 
     try:
         stat_time = time.time() + args.frequency
@@ -184,6 +170,9 @@ def main():
                     sys.exit(1)
                 elif isinstance(tup, psycopg.errors.OperationalError):
                     logging.error(tup)
+                    sys.exit(1)
+                elif isinstance(tup, Exception):
+                    logging.error("Exception raised: %s" % tup)
                     sys.exit(1)
                 else:
                     logging.info(
@@ -208,10 +197,26 @@ def signal_handler(sig, frame):
     # send the poison pill to each worker
     for _ in range(args.concurrency):
         kill_q.put(None)
-
+    
     # wait until all workers return
-    kill_q.join()
+    start = time.time()
+    
+    c = 0
+    timeout = True
 
+    while c < args.concurrency and timeout: 
+        try:
+            kill_q2.get(block=False)
+            c += 1
+        except:
+            pass
+
+        time.sleep(0.1)
+        timeout = time.time() < start + 5
+
+    if not timeout:
+        logging.info("Timeout reached - forcing processes to stop")
+        
     logging.info("Printing final stats")
     stats.print_stats()
     sys.exit(0)
@@ -227,7 +232,7 @@ def httpserver(path, port=3000):
     os.chdir(path)
     
     try:
-        with socketserver.TCPServer(server_address=("", port), RequestHandlerClass=QuietServerHandler) as httpd:
+        with socketserver.TCPServer(server_address=("", port), RequestHandlerClass=pgworkload.util.QuietServerHandler) as httpd:
             httpd.serve_forever()
     except OSError as e:
         logging.error(e)
@@ -284,49 +289,6 @@ def import_class_at_runtime(path: str):
     except ImportError as e:
         logging.error(e)
         sys.exit(1)
-
-
-def setup_parser():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--url', dest='dburl', default='postgres://root@localhost:26257/defaultdb?sslmode=disable',
-                        help="The connection string to the database. Default is 'postgres://root@localhost:26257/defaultdb?sslmode=disable'")
-    parser.add_argument('--app-name', dest='app_name',
-                        help='The name that can be used for filtering statements by client in the DB Console')
-    parser.add_argument("--concurrency", dest="concurrency",
-                        help="Number of concurrent workers (default 1)", default=1, type=int)
-    parser.add_argument("--iterations", dest="iterations", default=0, type=int,
-                        help="Total number of iterations (default=0 --> ad infinitum)")
-    parser.add_argument("--duration", dest="duration", default=0, type=int,
-                        help="Duration in seconds (default=0 --> ad infinitum)")
-
-    # initialization args
-    parser.add_argument('--init', default=False, dest='init', action=argparse.BooleanOptionalAction,
-                        help="Run a one-off initialization step")
-    parser.add_argument('--init-drop', default=False, dest='init_drop', action=argparse.BooleanOptionalAction,
-                        help="On initialization, drop the database if it exists")
-    parser.add_argument('--init-db', default='', dest='init_db', type=str,
-                        help="On initialization, override the default db name. Defaults to value passed in --workload-class or, if absent, --workload")
-    parser.add_argument('--init-delimiter', default='\t', dest='delimiter',
-                        help="On initialization, the delimeter char to use for the CSV files. Defaults = '\t'")
-    parser.add_argument('--init-skip-create-schema', default=False, dest='init_skip_create_schema', action=argparse.BooleanOptionalAction,
-                        help="On initialization, don't run the schema creation script")
-    parser.add_argument('--init-skip-data-generation', default=False, dest='init_skip_data_generation', action=argparse.BooleanOptionalAction,
-                        help="On initialization, don't generate the CSV data files")
-    parser.add_argument('--init-skip-data-import', default=False, dest='init_skip_data_import', action=argparse.BooleanOptionalAction,
-                        help="On initialization, don't import")
-    # other params
-    parser.add_argument('--log-level', dest='loglevel', default='info',
-                        help='The log level ([debug|info|warning|error]). (default = info)')
-    parser.add_argument('--conn-duration', dest='conn_duration', type=int, default=0,
-                        help='The number of seconds to keep database connections alive before resetting them (default=0 --> ad infinitum)')
-    parser.add_argument('--stats-frequency', dest='frequency', type=int, default=10,
-                        help='How often to display the stats in seconds (default=10). Set 0 to suppress stats printing')
-    parser.add_argument('--workload', dest='workload', required=True,
-                        help="Path to the workload module. Eg: workloads/bank.py for class 'Bank'")
-    parser.add_argument('--args', dest='args', default='{}',
-                        help='JSON string, or filepath to a JSON/YAML string, to pass to Workload at runtime')
-
-    return parser.parse_args()
 
 
 def run_transaction(conn, op, max_retries=3):
@@ -415,19 +377,24 @@ def get_dbms(dburl: str):
                 v: str = cur.fetchone()[0]
                 x: str = v.split(" ")[0]
                 if x not in SUPPORTED_DBMS:
-                    logging.error("Unknown DBMS: %s" % x)
-                    sys.exit(1)
+                    raise ValueError("Unknown DBMS: %s" % x)
                 return x
     except Exception as e:
-        logging.error(e)
-        sys.exit(1)
+        raise Exception(e)
 
 
 def init(workload: object):
     logging.debug("Running init")
     # PG or CRDB?
-    dbms: str = get_dbms(args.dburl)
-
+    try:
+        dbms: str = get_dbms(args.dburl)
+    except ValueError as e:
+        logging.error(e)
+        sys.exit(1)
+    except Exception as e:
+        logging.error(e)
+        dbms: str = None
+        
     # PART 1 - CREATE THE SCHEMA
     if args.init_skip_create_schema:
         logging.debug("Skipping init_create_schema")
@@ -551,7 +518,7 @@ def init_generate_data(workload: object, exec_threads: int, workload_path: str, 
     compression = 'gzip' if dbms == "CockroachDB" else None
 
     # generate the data by parsing the load variable
-    SimpleFaker(compression=compression).generate(
+    SimpleFaker(compression=compression, seed=0).generate(
         load, exec_threads, csv_dir, args.delimiter)
 
 
@@ -579,6 +546,12 @@ def init_import_data(workload: object, dburl: str, workload_path: str, dbms: str
                 for table in load.keys():
                     logging.info("Importing data for table '%s'" % table)
                     # this lists all files related to a table
+                    # table_csv_files = []
+                    # for x in csv_files:
+                    #     l = x.split('.')
+                    #     if '.'.join(l[:l.index('csv')-1]) == table:
+                    #         table_csv_files.append(x)
+
                     table_csv_files = [
                         x for x in csv_files if x.split('.')[0] == table]
 
@@ -595,7 +568,7 @@ def init_import_data(workload: object, dburl: str, workload_path: str, dbms: str
                                 csv_data += "'http://localhost:3000/%s'," % x
 
                             stmt = (
-                                "IMPORT INTO %s CSV DATA (%s) WITH delimiter = e'\t';" % (table, csv_data[:-1]))
+                                "IMPORT INTO %s CSV DATA (%s) WITH delimiter = e'\t', nullif = '';" % (table.replace('__', '.'), csv_data[:-1]))
 
                         else:
                             stmt = "COPY %s FROM '%s';" % (
@@ -608,14 +581,21 @@ def init_import_data(workload: object, dburl: str, workload_path: str, dbms: str
         sys.exit(1)
 
 
-def worker(q: mp.Queue, kill_q: mp.JoinableQueue, dburl: str,
+def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str,
            workload: object, args: dict, iterations: int, duration: int, conn_duration: int):
     logging.debug("Worker created")
 
     # capture KeyboardInterrupt and do nothing
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
-    w = workload(args)
+    # catch exception while instantiating the workload class
+    try:
+        w = workload(args)
+    except Exception as e:
+        stack_lines = traceback.format_exc()
+        q.put(Exception(stack_lines))
+        return
+    
     c = 0
     endtime = 0
     conn_endtime = 0
@@ -630,7 +610,7 @@ def worker(q: mp.Queue, kill_q: mp.JoinableQueue, dburl: str,
         try:
             kill_q.get(block=False)
             logging.debug("Poison pill received")
-            kill_q.task_done()
+            kill_q2.put(None)
             return
         except queue.Empty:
             pass
@@ -643,7 +623,7 @@ def worker(q: mp.Queue, kill_q: mp.JoinableQueue, dburl: str,
                     try:
                         kill_q.get(block=False)
                         logging.debug("Poison pill received")
-                        kill_q.task_done()
+                        kill_q2.put(None)
                         return
                     except queue.Empty:
                         pass
