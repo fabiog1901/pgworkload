@@ -93,7 +93,7 @@ class Stats:
             pass
 
 
-def get_type_and_args(datatypes: list):
+def __get_type_and_args(datatypes: list):
 
     # check if it is an array
     # string array
@@ -198,7 +198,7 @@ def get_type_and_args(datatypes: list):
         raise ValueError(f"Data type not implemented: '{datatype}'")
 
 
-def get_table_name_and_table_list(create_table_stmt: str, sort_by: list, count: int = 1000000):
+def __get_table_name_and_table_list(create_table_stmt: str, sort_by: list, count: int = 1000000):
 
     p1 = create_table_stmt.find('(')
     p2 = create_table_stmt.rfind(')')
@@ -210,13 +210,15 @@ def get_table_name_and_table_list(create_table_stmt: str, sort_by: list, count: 
             break
 
     # extract column definitions (within parentheses part)
-    # eg: id string(30)
-    # this is important as within parenthesis we might find commas
-    # and we need to split on commas later
+    # eg: 
+    #   id uuid primary key
+    #   s string(30)
     col_def_raw = create_table_stmt[p1+1:p2]
 
     # remove slices delimited by parenthesis
     # eg: from id 'sting(30)' to 'id string'
+    # this is important as within parenthesis we might find commas
+    # and we need to split on commas later
     within_brackets = False
     col_def = ''
     for i in col_def_raw:
@@ -229,15 +231,17 @@ def get_table_name_and_table_list(create_table_stmt: str, sort_by: list, count: 
         if not within_brackets:
             col_def += i
 
-    col_def = col_def.split(',')
+    col_def = [x.strip().lower() for x in col_def.split(',')]
 
     ll = []
     for x in col_def:
-        col_name_and_type = x.strip().split(" ")[:3]
-        # remove those lines that are not column definition,
-        # like CONSTRAINT, INDEX, FAMILY, etc..
-        if col_name_and_type[0].lower() not in RESERVED_WORDS:
-            ll.append(col_name_and_type)
+        # remove commented lines
+        if not x.startswith('--'):
+            col_name_and_type = x.strip().split(" ")[:3]
+            # remove those lines that are not column definition,
+            # like CONSTRAINT, INDEX, FAMILY, etc..
+            if col_name_and_type[0].lower() not in RESERVED_WORDS:
+                ll.append(col_name_and_type)
 
     table_list = []
     table_list.append({'count': count})
@@ -245,12 +249,12 @@ def get_table_name_and_table_list(create_table_stmt: str, sort_by: list, count: 
     table_list[0]['tables'] = {}
 
     for x in ll:
-        table_list[0]['tables'][x[0]] = get_type_and_args(x[1:])
+        table_list[0]['tables'][x[0]] = __get_type_and_args(x[1:])
 
     return table_name, table_list
 
 
-def get_create_table_stmts(ddl: str):
+def __get_create_table_stmts(ddl: str):
     """Parses a DDL SQL file and returns only the CREATE TABLE stmts
 
     Args:
@@ -272,25 +276,20 @@ def get_create_table_stmts(ddl: str):
     for i in stmts:
         p1 = i.find('(')
         if i.startswith('create'):
-            print(i)
             if 'table' in i[:p1].lower():
                 create_table_stmts.append(i)
 
     return create_table_stmts
 
 
-def ddl_to_yaml(input: str, output: str):
-
-    with open(input, 'r') as f:
-        ddl = f.read()
-        
-    stmts = get_create_table_stmts(ddl)
+def ddl_to_yaml(ddl: str):
+          
+    stmts = __get_create_table_stmts(ddl)
 
     d = {}
     for x in stmts:
-        table_name, table_list = get_table_name_and_table_list(
+        table_name, table_list = __get_table_name_and_table_list(
             x, count=1000, sort_by=[])
         d[table_name] = table_list
 
-    with open(output, 'w') as f:
-        f.write(yaml.dump(d, default_flow_style=False, sort_keys=False))
+    return yaml.dump(d, default_flow_style=False, sort_keys=False)
