@@ -386,7 +386,6 @@ class SimpleFaker:
             count = 1
             rem = 0
 
-        self.compression = None
         if self.compression == 'gzip':
             suffix = '.csv.gz'
         elif self.compression == 'zip':
