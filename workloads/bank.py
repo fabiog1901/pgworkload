@@ -27,8 +27,8 @@ class Bank:
             );
             """
 
-        # self.load holds the dictionaries of functions to be executed
-        # to load the database tables
+        # self.load holds the data generation YAML
+        # definition to populate the tables
         self.load: str = """ 
 # This has to be a YAML string so 
 # it's important it starts with no indentation
