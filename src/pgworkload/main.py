@@ -24,17 +24,18 @@ import traceback
 DEFAULT_SLEEP = 5
 SUPPORTED_DBMS = ["PostgreSQL", "CockroachDB"]
 
+
 def main():
     args.func(args)
-    
+
+
 def setup_parser():
     # Common options to all parsers
     common_parser = argparse.ArgumentParser(add_help=False)
-    
+
     common_parser.add_argument('-l', '--log-level', dest='loglevel', default='info',
                                help='The log level ([debug|info|warning|error]). (default = info)')
 
-    
     # root
     root = argparse.ArgumentParser(description='pgworkload  - workload framework for the PostgreSQL protocol',
                                    epilog='GitHub: <https://github.com/fabiog1901/pgworkload>',
@@ -44,19 +45,18 @@ def setup_parser():
 
     # workload options (common to root_init and root_run)
     workload_parser = argparse.ArgumentParser(add_help=False)
-    
+
     workload_parser.add_argument('-w', '--workload', dest='workload',  required=True,
-                          help="Path to the workload module. Eg: workloads/bank.py for class 'Bank'")
+                                 help="Path to the workload module. Eg: workloads/bank.py for class 'Bank'")
     workload_parser.add_argument('--args', dest='args', default='{}',
-                      help='JSON string, or filepath to a JSON/YAML string, to pass to Workload')
+                                 help='JSON string, or filepath to a JSON/YAML string, to pass to Workload')
     workload_parser.add_argument('--url', dest='dburl', default='postgres://root@localhost:26257/postgres?sslmode=disable',
-                      help="The connection string to the database. (default = 'postgres://root@localhost:26257/postgres?sslmode=disable')")
+                                 help="The connection string to the database. (default = 'postgres://root@localhost:26257/postgres?sslmode=disable')")
     workload_parser.add_argument('-a', '--app-name', dest='app_name',
-                      help='The application name specified by the client, if any. (default = <db name>)')
+                                 help='The application name specified by the client, if any. (default = <db name>)')
     workload_parser.add_argument('-c', "--concurrency", dest="concurrency",
-                      help="Number of concurrent workers (default = 1)", default=1, type=int)
-    
-    
+                                 help="Number of concurrent workers (default = 1)", default=1, type=int)
+
     # root -> init
     root_init = root_sub.add_parser('init', help='Init commands',
                                     description='description: Run the workload',
@@ -75,32 +75,29 @@ def setup_parser():
     root_init.add_argument('--skip-import', default=False, dest='skip_import', action=argparse.BooleanOptionalAction,
                            help="Don't import the CSV dataset files")
     root_init.set_defaults(func=init)
-    
-    
+
     # root -> run
     root_run = root_sub.add_parser('run', help='Run commands',
                                    description='description: Run the workload',
                                    epilog='GitHub: <https://github.com/fabiog1901/pgworkload>',
                                    parents=[common_parser, workload_parser])
     root_run.add_argument('-k', '--conn-duration', dest='conn_duration', type=int, default=0,
-                      help='The number of seconds to keep database connections alive before resetting them. (default = 0 --> ad infinitum)')
+                          help='The number of seconds to keep database connections alive before resetting them. (default = 0 --> ad infinitum)')
     root_run.add_argument('-s', '--stats-frequency', dest='frequency', type=int, default=10,
-                      help='How often to display the stats in seconds. (default = 10)')
+                          help='How often to display the stats in seconds. (default = 10)')
     root_run.add_argument('-i', '--iterations', dest="iterations", default=0, type=int,
-                      help="Total number of iterations. (default = 0 --> ad infinitum)")
+                          help="Total number of iterations. (default = 0 --> ad infinitum)")
     root_run.add_argument('-d', '--duration', dest="duration", default=0, type=int,
-                      help="Duration in seconds. (default = 0 --> ad infinitum)")
+                          help="Duration in seconds. (default = 0 --> ad infinitum)")
     root_run.set_defaults(func=run)
-    
-    
+
     # root -> util
     root_util = root_sub.add_parser('util', help='Utility commands',
                                     description='description: Generate YAML data generation files and CSV datasets',
                                     epilog='GitHub: <https://github.com/fabiog1901/pgworkload>',)
-    
+
     root_util_sub = root_util.add_subparsers()
 
-    
     # root -> util -> yaml
     root_util_yaml = root_util_sub.add_parser('yaml', help='Generate YAML data generation file from a DDL SQL file',
                                               description='description: Generate YAML data generation file from a DDL SQL file',
@@ -112,7 +109,6 @@ def setup_parser():
                                 help='Output filepath. (default = <input-basename>.yaml)')
     root_util_yaml.set_defaults(func=util_yaml)
 
-    
     # root -> util -> csv
     root_util_csv = root_util_sub.add_parser('csv', help='Generate CSV files from a a YAML data generation file',
                                              description='description: Generate CSV files from a a YAML data generation file',
@@ -183,21 +179,16 @@ def run(args):
 
     signal.signal(signal.SIGINT, signal_handler)
 
-    workload, args = init_pgworkload(args)  
+    workload, args = init_pgworkload(args)
 
     stats = pgworkload.util.Stats(frequency=args.frequency)
-    
+
     if args.iterations > 0:
         args.iterations = int(args.iterations / args.concurrency)
 
-    
-
-   
-
-    
     global kill_q
     global kill_q2
-    
+
     q = mp.Queue(maxsize=1000)
     kill_q = mp.Queue()
     kill_q2 = mp.Queue()
@@ -226,9 +217,6 @@ def run(args):
                     logging.error(tup)
                     logging.error(
                         "The schema is not present. Did you initialize the workload?")
-                    sys.exit(1)
-                elif isinstance(tup, psycopg.errors.OperationalError):
-                    logging.error(tup)
                     sys.exit(1)
                 elif isinstance(tup, Exception):
                     logging.error("Exception raised: %s" % tup)
@@ -323,39 +311,35 @@ def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str,
         except psycopg.errors.UndefinedTable as e:
             q.put(e)
             return
-        except psycopg.errors.OperationalError as e:
-            q.put(e)
-            return
         except psycopg.Error as e:
-            logging.error(
-                "Lost connection to the database. Sleeping for %s seconds." % (DEFAULT_SLEEP))
-            logging.error(e)
+            logging.error(f'{e.__class__.__name__} {e}')
+            logging.info("Sleeping for %s seconds" % (DEFAULT_SLEEP))
             time.sleep(DEFAULT_SLEEP)
         except Exception as e:
             logging.error("Exception: %s" % (e))
+            q.put(e)
+            return
 
 
 def init_pgworkload(args):
     logging.debug("Initialazing pgworkload")
-    
+
     global concurrency
     concurrency = args.concurrency
-    
+
     if not re.search(r'.*://.*/(.*)\?', args.dburl):
         logging.error(
             "The connection string needs to point to a database. Example: postgres://root@localhost:26257/postgres?sslmode=disable")
         sys.exit(1)
-    
+
     workload = import_class_at_runtime(args.workload)
-    
-    
-    
+
     args.dburl = set_query_parameter(
         args.dburl, "application_name", args.app_name if args.app_name else workload.__name__)
-    
+
     logging.info("URL: '%s'" % args.dburl)
-    
-     # load args dict from file or string
+
+    # load args dict from file or string
     if os.path.exists(args.args):
         with open(args.args, 'r') as f:
             args.args = yaml.safe_load(f)
@@ -365,19 +349,19 @@ def init_pgworkload(args):
             logging.error(
                 "The value passed to '--args' is not a valid JSON or a valid path to a JSON/YAML file: '%s'" % args.args)
             sys.exit(1)
-            
+
     return workload, args
-    
-    
+
+
 def init(args):
     logging.debug("Running init")
 
-    workload, args = init_pgworkload(args)   
-    
+    workload, args = init_pgworkload(args)
+
     if args.db == '':
         args.db = os.path.splitext(
             os.path.basename(args.workload))[0].lower()
-        
+
     # PG or CRDB?
     try:
         dbms: str = get_dbms(args.dburl)
@@ -573,8 +557,8 @@ def init_import_data(workload: object, dburl: str, workload_path: str, dbms: str
     except Exception as e:
         logging.error("Exception: %s" % (e))
         sys.exit(1)
-        
-        
+
+
 def signal_handler(sig, frame):
     global stats
     global concurrency
