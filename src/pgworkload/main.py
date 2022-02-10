@@ -26,84 +26,162 @@ SUPPORTED_DBMS = ["PostgreSQL", "CockroachDB"]
 
 
 def setup_parser():
-    parser = argparse.ArgumentParser()
+    # Common options to all parsers
+    common_parser = argparse.ArgumentParser(add_help=False)
     
-    subparsers = parser.add_subparsers(help='sub-command help')
-    
-    # Util
-    subparser_gen = subparsers.add_parser('gen', help='generate auxiliary files')
-    subparser_gen.add_argument('--from-ddl', dest='from_ddl', type=str, default='',
-                               help='Read DDL SQL file and generates YAML data generation file')
-    subparser_gen.add_argument('--from-yaml', dest='from_yaml', type=str, default='',
-                               help='Read YAML data generation file and generate CSV files')
-    subparser_gen.add_argument('--output-yaml', dest='output_yaml', type=str, default='',
-                               help='Filepath for the generated YAML file')
-    subparser_gen.add_argument('--output-csv-dir', dest='output_csv_dir', type=str, default='',
-                               help='Output directory for the CSV files')
-    
-    # main
-    parser.add_argument('--url', dest='dburl', default='postgres://root@localhost:26257/defaultdb?sslmode=disable',
-                        help="The connection string to the database. Default is 'postgres://root@localhost:26257/defaultdb?sslmode=disable'")
-    parser.add_argument('--app-name', dest='app_name',
-                        help='The name that can be used for filtering statements by client in the DB Console')
-    parser.add_argument("--concurrency", dest="concurrency",
-                        help="Number of concurrent workers (default 1)", default=1, type=int)
-    parser.add_argument("--iterations", dest="iterations", default=0, type=int,
-                        help="Total number of iterations (default=0 --> ad infinitum)")
-    parser.add_argument("--duration", dest="duration", default=0, type=int,
-                        help="Duration in seconds (default=0 --> ad infinitum)")
+    common_parser.add_argument('-l', '--log-level', dest='loglevel', default='info',
+                               help='The log level ([debug|info|warning|error]). (default = info)')
 
-    # initialization args
-    parser.add_argument('--init', default=False, dest='init', action=argparse.BooleanOptionalAction,
-                        help="Run a one-off initialization step")
-    parser.add_argument('--init-drop', default=False, dest='init_drop', action=argparse.BooleanOptionalAction,
-                        help="On initialization, drop the database if it exists")
-    parser.add_argument('--init-db', default='', dest='init_db', type=str,
-                        help="On initialization, override the default db name. Defaults to value passed in --workload-class or, if absent, --workload")
-    parser.add_argument('--init-delimiter', default='\t', dest='delimiter',
-                        help="On initialization, the delimeter char to use for the CSV files. Defaults = '\t'")
-    parser.add_argument('--init-skip-create-schema', default=False, dest='init_skip_create_schema', action=argparse.BooleanOptionalAction,
-                        help="On initialization, don't run the schema creation script")
-    parser.add_argument('--init-skip-data-generation', default=False, dest='init_skip_data_generation', action=argparse.BooleanOptionalAction,
-                        help="On initialization, don't generate the CSV data files")
-    parser.add_argument('--init-skip-data-import', default=False, dest='init_skip_data_import', action=argparse.BooleanOptionalAction,
-                        help="On initialization, don't import")
-    # other params
-    parser.add_argument('--log-level', dest='loglevel', default='info',
-                        help='The log level ([debug|info|warning|error]). (default = info)')
-    parser.add_argument('--conn-duration', dest='conn_duration', type=int, default=0,
-                        help='The number of seconds to keep database connections alive before resetting them (default=0 --> ad infinitum)')
-    parser.add_argument('--stats-frequency', dest='frequency', type=int, default=10,
-                        help='How often to display the stats in seconds (default=10). Set 0 to suppress stats printing')
-    parser.add_argument('--workload', dest='workload', #required=True,
-                        help="Path to the workload module. Eg: workloads/bank.py for class 'Bank'")
-    parser.add_argument('--args', dest='args', default='{}',
-                        help='JSON string, or filepath to a JSON/YAML string, to pass to Workload at runtime')
+    
+    # root
+    root = argparse.ArgumentParser(description='pgworkload  - workload framework for the PostgreSQL protocol',
+                                   epilog='GitHub: <https://github.com/fabiog1901/pgworkload>',
+                                   parents=[common_parser])
 
-    return parser.parse_args()
+    root_sub = root.add_subparsers(help='')
+
+    # workload options (common to root_init and root_run)
+    workload_parser = argparse.ArgumentParser(add_help=False)
+    
+    workload_parser.add_argument('--args', dest='args', default='{}',
+                      help='JSON string, or filepath to a JSON/YAML string, to pass to Workload')
+    workload_parser.add_argument('--url', dest='dburl', default='postgres://root@localhost:26257/postgres?sslmode=disable',
+                      help="The connection string to the database. (default = 'postgres://root@localhost:26257/postgres?sslmode=disable')")
+    workload_parser.add_argument('-a', '--app-name', dest='app_name',
+                      help='The application name specified by the client, if any. (default = <db name>)')
+    workload_parser.add_argument('-c', "--concurrency", dest="concurrency",
+                      help="Number of concurrent workers (default = 1)", default=1, type=int)
+    
+    
+    # root -> init
+    root_init = root_sub.add_parser('init', help='Init commands',
+                                    description='description: Run the workload',
+                                    parents=[common_parser, workload_parser])
+    root_init.add_argument('--drop', default=False, dest='init_drop', action=argparse.BooleanOptionalAction,
+                           help="Drop the database if it exists")
+    root_init.add_argument('--db', default='', dest='init_db', type=str,
+                           help="Override the default DB name. (default = <value passed in --workload>)")
+    root_init.add_argument('-d', '--delimiter', default='\t', dest='delimiter',
+                           help="The delimeter char to use for the CSV files. (defaults = '\\t')")
+    root_init.add_argument('--skip-schema', default=False, dest='init_skip_create_schema', action=argparse.BooleanOptionalAction,
+                           help="Don't run the schema creation script")
+    root_init.add_argument('--skip-gen', default=False, dest='init_skip_data_generation', action=argparse.BooleanOptionalAction,
+                           help="Don't generate the CSV data files")
+    root_init.add_argument('--skip-import', default=False, dest='init_skip_data_import', action=argparse.BooleanOptionalAction,
+                           help="Don't import the CSV dataset files")
+    root_init.set_defaults(func=init)
+    
+    
+    # root -> run
+    root_run = root_sub.add_parser('run', help='Run commands',
+                                   description='description: Run the workload',
+                                   parents=[common_parser, workload_parser])
+    root_run.add_argument('-k', '--conn-duration', dest='conn_duration', type=int, default=0,
+                      help='The number of seconds to keep database connections alive before resetting them. (default = 0 --> ad infinitum)')
+    root_run.add_argument('-s', '--stats-frequency', dest='frequency', type=int, default=10,
+                      help='How often to display the stats in seconds. (default = 10)')
+    root_run.add_argument('-w', '--workload', dest='workload',  required=True,
+                          help="Path to the workload module. Eg: workloads/bank.py for class 'Bank'")
+    root_run.add_argument('-i', '--iterations', dest="iterations", default=0, type=int,
+                      help="Total number of iterations. (default = 0 --> ad infinitum)")
+    root_run.add_argument('-d', '--duration', dest="duration", default=0, type=int,
+                      help="Duration in seconds. (default = 0 --> ad infinitum)")
+    root_run.set_defaults(func=run)
+    
+    
+    # root -> util
+    root_util = root_sub.add_parser('util', help='Utility commands',
+                                    description='description: Generate YAML data generation files and CSV datasets')
+    
+    root_util_sub = root_util.add_subparsers()
+
+    
+    # root -> util -> yaml
+    root_util_yaml = root_util_sub.add_parser('yaml', help='Generate YAML data generation file from a DDL SQL file',
+                                              description='description: Generate YAML data generation file from a DDL SQL file',
+                                              parents=[common_parser])
+    root_util_yaml.add_argument('-i', '--input', dest='input', type=str, default='', required=True,
+                                help='Filepath to the DDL SQL file')
+    root_util_yaml.add_argument('-o', '--output', dest='output', type=str, default='',
+                                help='Output filepath. (default = <input-basename>.yaml)')
+    root_util_yaml.set_defaults(func=util_yaml)
+
+    
+    # root -> util -> csv
+    root_util_csv = root_util_sub.add_parser('csv', help='Generate CSV files from a a YAML data generation file',
+                                             description='description: Generate CSV files from a a YAML data generation file',
+                                             parents=[common_parser])
+    root_util_csv.add_argument('-i', '--input', dest='input', type=str, required=True,
+                               help='Filepath to the YAML data generation file')
+    root_util_csv.add_argument('-o', '--output', dest='output', type=str, default='',
+                               help='Output directory for the CSV files. (default = <input-basename>)')
+    root_util_csv.add_argument('-t', '--threads', dest="threads", default=1, type=int,
+                               help="Number of concurrent threads/processes (default = 1)")
+    root_util_csv.add_argument('-d', '--delimiter', default='\t', dest='delimiter',
+                               help="The delimeter char to use for the CSV files. (default = '\\t')")
+    root_util_csv.add_argument('-c', '--compression', default='gzip', dest='compression',
+                               help="The compression format. (defaults = 'gzip')")
+    root_util_csv.set_defaults(func=util_csv)
+
+    return root.parse_args()
 
 
 def main():
+    args.func(args)
+
+
+def util_yaml(args):
+    with open(args.input, 'r') as f:
+        ddl = f.read()
+
+    if not args.output:
+        output = get_based_name_dir(args.input) + '.yaml'
+    else:
+        output = args.output
+
+    # backup the current file as to not override
+    if os.path.exists(output):
+        os.rename(output, output + '.' +
+                  dt.datetime.utcnow().strftime('%Y%m%d-%H%M%S'))
+
+    # create new directory
+    with open(output, 'w') as f:
+        f.write(pgworkload.util.ddl_to_yaml(ddl))
+
+
+def util_csv(args):
+    with open(args.input, 'r') as f:
+        load = yaml.safe_load(f.read())
+
+    if not args.output:
+        output_dir = get_based_name_dir(args.input)
+    else:
+        output_dir = args.output
+
+    # if the output dir is
+    if os.path.exists(output_dir):
+        output_dir += '_dir'
+    # backup the current directory as to not override
+    if os.path.isdir(output_dir):
+        os.rename(output_dir, output_dir + '.' +
+                  dt.datetime.utcnow().strftime('%Y%m%d-%H%M%S'))
+
+    # create new directory
+    os.mkdir(output_dir)
+
+    SimpleFaker(compression=args.compression).generate(
+        load, args.threads, output_dir,  args.delimiter)
+
+
+def run(args):
     global stats
+    global concurrency
+    concurrency = args.concurrency
 
     signal.signal(signal.SIGINT, signal_handler)
-   
-    try:
-        if args.from_ddl:
-            pgworkload.util.ddl_to_yaml(args.from_ddl, args.output_yaml)
-            sys.exit(0)
-        
-        if args.from_yaml:
-            with open(args.from_yaml, 'r') as f:
-                load = yaml.safe_load(f.read())
 
-            SimpleFaker().generate(load, args.concurrency, args.output_csv_dir,  args.delimiter)
-            sys.exit(0)
-    except:
-        pass
-        
     workload = import_class_at_runtime(args.workload)
-    
+
     stats = pgworkload.util.Stats(frequency=args.frequency)
 
     if not re.search(r'.*://.*/(.*)\?', args.dburl):
@@ -134,7 +212,7 @@ def main():
     logging.info("URL: '%s'" % args.dburl)
 
     if args.init:
-        init(workload(args.args))
+        init(workload(args.args), args)
         sys.exit(0)
 
     q = mp.Queue(maxsize=1000)
@@ -191,32 +269,30 @@ def main():
 
 def signal_handler(sig, frame):
     global stats
-
+    global concurrency
     logging.info("KeyboardInterrupt signal detected. Stopping processes...")
 
     # send the poison pill to each worker
-    for _ in range(args.concurrency):
+    for _ in range(concurrency):
         kill_q.put(None)
-    
+
     # wait until all workers return
     start = time.time()
-    
     c = 0
     timeout = True
-
-    while c < args.concurrency and timeout: 
+    while c < concurrency and timeout:
         try:
             kill_q2.get(block=False)
             c += 1
         except:
             pass
 
-        time.sleep(0.1)
+        time.sleep(0.01)
         timeout = time.time() < start + 5
 
     if not timeout:
         logging.info("Timeout reached - forcing processes to stop")
-        
+
     logging.info("Printing final stats")
     stats.print_stats()
     sys.exit(0)
@@ -230,7 +306,7 @@ def httpserver(path, port=3000):
         port (int, optional): The http server listening port. Defaults to 3000.
     """
     os.chdir(path)
-    
+
     try:
         with socketserver.TCPServer(server_address=("", port), RequestHandlerClass=pgworkload.util.QuietServerHandler) as httpd:
             httpd.serve_forever()
@@ -318,9 +394,9 @@ def run_transaction(conn, op, max_retries=3):
         f"Transaction did not succeed after {max_retries} retries")
 
 
-def get_csv_files_dirname():
-    return os.path.join(os.path.dirname(args.workload), os.path.splitext(
-        os.path.basename(args.workload))[0].lower())
+def get_based_name_dir(filepath):
+    return os.path.join(os.path.dirname(filepath), os.path.splitext(
+        os.path.basename(filepath))[0].lower())
 
 
 def get_workload_load(workload: object, workload_path: str):
@@ -383,8 +459,11 @@ def get_dbms(dburl: str):
         raise Exception(e)
 
 
-def init(workload: object):
+def init(args):
     logging.debug("Running init")
+
+    workload = import_class_at_runtime(args.workload)
+
     # PG or CRDB?
     try:
         dbms: str = get_dbms(args.dburl)
@@ -394,7 +473,7 @@ def init(workload: object):
     except Exception as e:
         logging.error(e)
         dbms: str = None
-        
+
     # PART 1 - CREATE THE SCHEMA
     if args.init_skip_create_schema:
         logging.debug("Skipping init_create_schema")
@@ -406,7 +485,8 @@ def init(workload: object):
     if args.init_skip_data_generation:
         logging.debug("Skipping init_generate_data")
     else:
-        init_generate_data(workload, args.concurrency, args.workload, dbms)
+        init_generate_data(workload, args.concurrency,
+                           args.workload, dbms, args.delimiter)
 
     # PART 3 - IMPORT THE DATA
     dburl = get_new_dburl(args.dburl, args.init_db)
@@ -493,7 +573,7 @@ def init_create_schema(workload: object, dburl: str, drop: bool, db_name: str, w
         sys.exit(1)
 
 
-def init_generate_data(workload: object, exec_threads: int, workload_path: str, dbms: str):
+def init_generate_data(workload: object, exec_threads: int, workload_path: str, dbms: str, delimiter: str):
     logging.debug("Running init_generate_data")
     # description of how to generate the data is in workload variable self.load
 
@@ -504,7 +584,7 @@ def init_generate_data(workload: object, exec_threads: int, workload_path: str, 
         return
 
     # get the dirname to put the csv files
-    csv_dir: str = get_csv_files_dirname()
+    csv_dir: str = get_based_name_dir(workload_path)
 
     # backup the current directory as to not override
     if os.path.isdir(csv_dir):
@@ -519,13 +599,13 @@ def init_generate_data(workload: object, exec_threads: int, workload_path: str, 
 
     # generate the data by parsing the load variable
     SimpleFaker(compression=compression, seed=0).generate(
-        load, exec_threads, csv_dir, args.delimiter)
+        load, exec_threads, csv_dir, delimiter)
 
 
 def init_import_data(workload: object, dburl: str, workload_path: str, dbms: str):
     logging.debug("Running init_import_data")
 
-    csv_dir = get_csv_files_dirname()
+    csv_dir = get_based_name_dir(workload_path)
     load = get_workload_load(workload, workload_path)
 
     # Start the http server in a new Process
@@ -584,7 +664,6 @@ def init_import_data(workload: object, dburl: str, workload_path: str, dbms: str
 def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str,
            workload: object, args: dict, iterations: int, duration: int, conn_duration: int):
     logging.debug("Worker created")
-
     # capture KeyboardInterrupt and do nothing
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
@@ -595,7 +674,7 @@ def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str,
         stack_lines = traceback.format_exc()
         q.put(Exception(stack_lines))
         return
-    
+
     c = 0
     endtime = 0
     conn_endtime = 0
