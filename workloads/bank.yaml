@@ -1,5 +1,5 @@
 ref_data:
-  - count: 1000
+  - count: 10000
     sort-by:
       - my_sequence
     tables:
@@ -15,6 +15,7 @@ ref_data:
         type: UUIDv4
         args:
           seed: 0
+          null_pct: 0
       my_choice:
         type: choice
         args:
@@ -37,18 +38,24 @@ ref_data:
           cum_weights: []
             # None
           seed: 0
+          null_pct: 0.1
+          array: 0
       my_integer:
         type: integer
         args:
           start: 1000
           end: 9999
           seed: 0
+          null_pct: 0.3
+          array: 0
       my_float:
         type: float
         args:
           max: 100000
           round: 2
           seed: 0
+          null_pct: 0.1
+          array: 2
       my_timestamp:
         type: timestamp
         args:
@@ -56,6 +63,7 @@ ref_data:
           end: "2022-12-31"
           format: '%Y-%m-%d %H:%M:%S.%f'
           seed: 0
+          null_pct: 0.1
       my_date:
         type: Date
         args:
@@ -63,6 +71,8 @@ ref_data:
           end: "2022-12-31"
           format: '%Y-%m-%d'
           seed: 0
+          null_pct: 0.2
+          array: 0
       my_time:
         type: Time
         args:
@@ -70,6 +80,8 @@ ref_data:
           end: "15:30:00"
           micros: no
           seed: 0
+          null_pct: 0.2
+          array: 0
       # my_bytes:
       #   type: bytes
       #   args:
@@ -81,3 +93,18 @@ ref_data:
           min: 10
           max: 50
           seed: 0
+          null_pct: 0.5
+          array: 3
+      my_bool:
+        type: bool
+        args:
+          seed: 0
+          null_pct: 0.5
+          array: 3
+      my_json:
+        type: jsonb
+        args:
+          min: 10
+          max: 50
+          seed: 0
+          null_pct: 0.5

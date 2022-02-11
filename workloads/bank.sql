@@ -4,12 +4,14 @@ CREATE TABLE IF NOT EXISTS ref_data (
     my_uuid UUID,
     my_choice VARCHAR,
     my_integer INT,
-    my_float FLOAT,
+    my_float FLOAT ARRAY,
     my_timestamp TIMESTAMP,
     my_date DATE,
     my_time TIME,
     -- my_bytes BYTES,
-    my_string VARCHAR
+    my_string VARCHAR [],
+    my_bool BOOL,
+    my_json BOOL
 );
 
 CREATE TABLE IF NOT EXISTS transactions (
