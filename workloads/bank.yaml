@@ -100,7 +100,6 @@ ref_data:
         args:
           seed: 0
           null_pct: 0.5
-          array: 3
       my_json:
         type: jsonb
         args:
