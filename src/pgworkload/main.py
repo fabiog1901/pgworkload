@@ -28,7 +28,7 @@ SUPPORTED_DBMS = ["PostgreSQL", "CockroachDB"]
 def main():
     try:
         args.func(args)
-    except:
+    except Exception as e:
         args.parser.print_help()
 
 
@@ -70,8 +70,10 @@ def setup_parser():
                            help="Drop the database if it exists")
     root_init.add_argument('--db', default='', dest='db', type=str,
                            help="Override the default DB name. (default = <value passed in --workload>)")
-    root_init.add_argument('-d', '--delimiter', default='\t', dest='delimiter',
-                           help="The delimeter char to use for the CSV files. (defaults = '\\t')")
+    root_init.add_argument('-n', '--hostname', dest='http_server_hostname', default='',
+                           help="The hostname of the http server that serves the CSV files. (defaults = <inferred>)")
+    root_init.add_argument('-p', '--port', dest='http_server_port', default='3000',
+                           help="The port of the http server that servers the CSV files. (defaults = 3000)")
     root_init.add_argument('--skip-schema', default=False, dest='skip_schema', action=argparse.BooleanOptionalAction,
                            help="Don't run the schema creation script")
     root_init.add_argument('--skip-gen', default=False, dest='skip_gen', action=argparse.BooleanOptionalAction,
@@ -267,7 +269,8 @@ def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str,
 
     while True:
         if conn_duration > 0:
-            conn_endtime = time.time() + conn_duration
+            # reconnect every conn_duration +/-10%
+            conn_endtime = time.time() + int(conn_duration * random.uniform(.9, 1.1))
         # listen for termination messages (poison pill)
         try:
             kill_q.get(block=False)
@@ -392,14 +395,21 @@ def init(args):
         logging.debug("Skipping init_generate_data")
     else:
         init_generate_data(workload, args.concurrency,
-                           args.workload, dbms, args.delimiter)
+                           args.workload, dbms,
+                           args.http_server_hostname, args.http_server_port)
 
     # PART 3 - IMPORT THE DATA
     dburl = get_new_dburl(args.dburl, args.db)
     if args.skip_import:
         logging.debug("Skipping init_import_data")
     else:
-        init_import_data(workload, dburl, args.workload, dbms)
+        if not args.http_server_hostname:
+            args.http_server_hostname = pgworkload.util.get_hostname()
+            logging.debug("Hostname identified as: '%s'",
+                          args.http_server_hostname)
+
+        init_import_data(workload, dburl, args.workload, dbms,
+                         args.http_server_hostname, args.http_server_port)
 
     # PART 4 - RUN WORKLOAD INIT
     logging.debug("Running workload.init()")
@@ -479,7 +489,7 @@ def init_create_schema(workload: object, dburl: str, drop: bool, db_name: str, w
         sys.exit(1)
 
 
-def init_generate_data(workload: object, exec_threads: int, workload_path: str, dbms: str, delimiter: str):
+def init_generate_data(workload: object, exec_threads: int, workload_path: str, dbms: str, http_server_hostname: str, http_server_port: str):
     logging.debug("Running init_generate_data")
     # description of how to generate the data is in workload variable self.load
 
@@ -505,10 +515,10 @@ def init_generate_data(workload: object, exec_threads: int, workload_path: str, 
 
     # generate the data by parsing the load variable
     SimpleFaker(compression=compression, seed=0).generate(
-        load, exec_threads, csv_dir, delimiter)
+        load, exec_threads, csv_dir, '\t')
 
 
-def init_import_data(workload: object, dburl: str, workload_path: str, dbms: str):
+def init_import_data(workload: object, dburl: str, workload_path: str, dbms: str, http_server_hostname: str, http_server_port: str):
     logging.debug("Running init_import_data")
 
     csv_dir = get_based_name_dir(workload_path)
@@ -551,7 +561,8 @@ def init_import_data(workload: object, dburl: str, workload_path: str, dbms: str
                         if dbms == 'CockroachDB':
                             csv_data = ''
                             for x in chunk:
-                                csv_data += "'http://localhost:3000/%s'," % x
+                                csv_data += "'http://%s:%s/%s'," % (
+                                    http_server_hostname, http_server_port, x)
 
                             stmt = (
                                 "IMPORT INTO %s CSV DATA (%s) WITH delimiter = e'\t', nullif = '';" % (table.replace('__', '.'), csv_data[:-1]))
