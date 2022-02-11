@@ -3,6 +3,7 @@ import http.server
 import time
 import tabulate
 import numpy as np
+import socket
 
 RESERVED_WORDS = ['unique', 'inverted', 'index', 'constraint',
                   'family', 'like', 'primary', 'key',
@@ -281,6 +282,8 @@ def __get_create_table_stmts(ddl: str):
 
     return create_table_stmts
 
+def get_hostname():
+    return socket.gethostname()
 
 def ddl_to_yaml(ddl: str):
           
