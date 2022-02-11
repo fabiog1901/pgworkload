@@ -1,9 +1,18 @@
-import yaml
 import http.server
-import time
-import tabulate
+import importlib
+import logging
 import numpy as np
+import os
+import pgworkload.builtin_workloads
+import psycopg
+import random
 import socket
+import socketserver
+import sys
+import tabulate
+import time
+import urllib
+import yaml
 
 RESERVED_WORDS = ['unique', 'inverted', 'index', 'constraint',
                   'family', 'like', 'primary', 'key',
@@ -13,11 +22,13 @@ RESERVED_WORDS = ['unique', 'inverted', 'index', 'constraint',
                   'visible', 'using', 'hash' 'with', 'bucket_count']
 
 DEFAULT_ARRAY_COUNT = 3
+SUPPORTED_DBMS = ["PostgreSQL", "CockroachDB"]
+
 
 class QuietServerHandler(http.server.SimpleHTTPRequestHandler):
     """SimpleHTTPRequestHandler that doesn't output any log
     """
-   
+
     def log_message(self, format, *args):
         pass
 
@@ -94,6 +105,168 @@ class Stats:
             pass
 
 
+def set_query_parameter(url, param_name, param_value):
+    """convenience function to add a query parameter string such as '&application_name=myapp' to a url
+
+    Args:
+        url (str]): The URL string
+        param_name (str): the parameter to add
+        param_value (str): the value of the parameter
+
+    Returns:
+        str: the new URL with the added parameter
+    """
+    scheme, netloc, path, query_string, fragment = urllib.parse.urlsplit(url)
+    query_params = urllib.parse.parse_qs(query_string)
+    query_params[param_name] = [param_value]
+    new_query_string = urllib.parse.urlencode(query_params, doseq=True)
+    return urllib.parse.urlunsplit((scheme, netloc, path, new_query_string, fragment))
+
+
+def import_class_at_runtime(path: str):
+    """Imports a class with the same name of the module capitalized.
+    Example: 'workloads/bank.py' returns class 'Bank' in module 'bank'
+
+    Args:
+        path (string): the path of the module to import
+
+    Returns:
+        class: the imported class
+    """
+    # check if path is one of the built-in workloads
+    try:
+        workload = getattr(pgworkload.builtin_workloads,
+                           path.lower().capitalize())
+        logging.info("Loading built-in workload '%s'" %
+                     path.lower().capitalize())
+        return workload
+    except AttributeError:
+        pass
+
+    # load the module at runtime
+    sys.path.append(os.path.dirname(path))
+    module_name = os.path.splitext(os.path.basename(path))[0]
+
+    try:
+        module = importlib.import_module(module_name)
+        return getattr(module, module_name.capitalize())
+    except AttributeError as e:
+        logging.error(e)
+        sys.exit(1)
+    except ImportError as e:
+        logging.error(e)
+        sys.exit(1)
+
+
+def run_transaction(conn, op, max_retries=3):
+    """
+    Execute the operation *op(conn)* retrying serialization failure.
+
+    If the database returns an error asking to retry the transaction, retry it
+    *max_retries* times before giving up (and propagate it).
+    """
+    for retry in range(1, max_retries + 1):
+        try:
+            op(conn)
+            # If we reach this point, we were able to commit, so we break
+            # from the retry loop.
+            return
+        except psycopg.errors.SerializationFailure as e:
+            # This is a retry error, so we roll back the current
+            # transaction and sleep for a bit before retrying. The
+            # sleep time increases for each failed transaction.
+            logging.debug("psycopg.SerializationFailure:: %s", e)
+            conn.rollback()
+            time.sleep((2 ** retry) * 0.1 * (random.random() + 0.5))
+        except psycopg.Error as e:
+            raise e
+
+    raise ValueError(
+        f"Transaction did not succeed after {max_retries} retries")
+
+
+def get_based_name_dir(filepath):
+    return os.path.join(os.path.dirname(filepath), os.path.splitext(
+        os.path.basename(filepath))[0].lower())
+
+
+def get_workload_load(workload: object, workload_path: str):
+    # find if the .yaml file exists
+    yaml_file = os.path.abspath(os.path.join(os.path.dirname(workload_path), os.path.splitext(
+        os.path.basename(workload_path))[0].lower() + '.yaml'))
+
+    if os.path.exists(yaml_file):
+        logging.debug(
+            'Found data generation definition YAML file %s' % yaml_file)
+        with open(yaml_file, 'r') as f:
+            return yaml.safe_load(f)
+    else:
+        logging.debug(
+            'YAML file %s not found. Loading data generation definition from the \'load\' variable', yaml_file)
+        try:
+            return yaml.safe_load(workload.load)
+        except AttributeError as e:
+            logging.error(
+                '%s. Make sure self.load is a valid variable in __init__', e)
+            return {}
+
+
+def get_new_dburl(dburl: str, db_name: str):
+    """Return the dburl with the database name replaced.
+
+    Args:
+        dburl (str): the database connection string
+        db_name (str): the new database name
+
+    Returns:
+        str: the new connection string
+    """
+    # craft the new dburl
+    scheme, netloc, path, query_string, fragment = urllib.parse.urlsplit(dburl)
+    path = '/' + db_name
+    return urllib.parse.urlunsplit(
+        (scheme, netloc, path, query_string, fragment))
+
+
+def get_dbms(dburl: str):
+    """Identify the DBMS technology
+
+    Args:
+        dburl: The connection string to the database
+
+    Returns:
+        str: the dmbs name (CockroachDB, PostgreSQL, ...)
+    """
+    try:
+        with psycopg.connect(dburl, autocommit=True) as conn:
+            with conn.cursor() as cur:
+                cur.execute("select version();")
+                v: str = cur.fetchone()[0]
+                x: str = v.split(" ")[0]
+                if x not in SUPPORTED_DBMS:
+                    raise ValueError("Unknown DBMS: %s" % x)
+                return x
+    except Exception as e:
+        raise Exception(e)
+
+
+def httpserver(path, port=3000):
+    """Create simple http server
+
+    Args:
+        path (string): The directory to serve files from
+        port (int, optional): The http server listening port. Defaults to 3000.
+    """
+    os.chdir(path)
+
+    try:
+        with socketserver.TCPServer(server_address=("", port), RequestHandlerClass=QuietServerHandler) as httpd:
+            httpd.serve_forever()
+    except OSError as e:
+        logging.error(e)
+        return
+
+
 def __get_type_and_args(datatypes: list):
 
     # check if it is an array
@@ -164,7 +337,7 @@ def __get_type_and_args(datatypes: list):
                     'seed': 0,
                     'null_pct': 0.0}
                 }
-        
+
     elif datatype.lower() == 'date':
         return {'type': 'date',
                 'args': {
@@ -211,7 +384,7 @@ def __get_table_name_and_table_list(create_table_stmt: str, sort_by: list, count
             break
 
     # extract column definitions (within parentheses part)
-    # eg: 
+    # eg:
     #   id uuid primary key
     #   s string(30)
     col_def_raw = create_table_stmt[p1+1:p2]
@@ -267,7 +440,7 @@ def __get_create_table_stmts(ddl: str):
 
     # separate input into a 'create table' stmts list
     stmts = ' '.join(x.lower() for x in ddl.split())
-    
+
     # strip whitespace and remove empty items
     stmts: list = [x.strip() for x in stmts.split(';') if x != '']
 
@@ -282,11 +455,13 @@ def __get_create_table_stmts(ddl: str):
 
     return create_table_stmts
 
+
 def get_hostname():
     return socket.gethostname()
 
+
 def ddl_to_yaml(ddl: str):
-          
+
     stmts = __get_create_table_stmts(ddl)
 
     d = {}

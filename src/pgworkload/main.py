@@ -5,6 +5,8 @@ import datetime as dt
 import logging
 import multiprocessing as mp
 import os
+import pgworkload.simplefaker
+import pgworkload.util
 import psycopg
 import queue
 import random
@@ -12,17 +14,10 @@ import re
 import signal
 import sys
 import time
-import urllib
-import importlib
-import socketserver
-from pgworkload.simplefaker import SimpleFaker
-from pgworkload import builtin_workloads
-import yaml
-import pgworkload.util
 import traceback
+import yaml
 
 DEFAULT_SLEEP = 5
-SUPPORTED_DBMS = ["PostgreSQL", "CockroachDB"]
 
 
 def main():
@@ -143,7 +138,7 @@ def util_yaml(args):
         ddl = f.read()
 
     if not args.output:
-        output = get_based_name_dir(args.input) + '.yaml'
+        output = pgworkload.util.get_based_name_dir(args.input) + '.yaml'
     else:
         output = args.output
 
@@ -162,7 +157,7 @@ def util_csv(args):
         load = yaml.safe_load(f.read())
 
     if not args.output:
-        output_dir = get_based_name_dir(args.input)
+        output_dir = pgworkload.util.get_based_name_dir(args.input)
     else:
         output_dir = args.output
 
@@ -178,8 +173,40 @@ def util_csv(args):
     # create new directory
     os.mkdir(output_dir)
 
-    SimpleFaker(compression=args.compression).generate(
+    pgworkload.simplefaker.SimpleFaker(compression=args.compression).generate(
         load, args.threads, output_dir,  args.delimiter)
+
+
+def init_pgworkload(args):
+    logging.debug("Initialazing pgworkload")
+
+    global concurrency
+    concurrency = args.concurrency
+
+    if not re.search(r'.*://.*/(.*)\?', args.dburl):
+        logging.error(
+            "The connection string needs to point to a database. Example: postgres://root@localhost:26257/postgres?sslmode=disable")
+        sys.exit(1)
+
+    workload = pgworkload.util.import_class_at_runtime(args.workload)
+
+    args.dburl = pgworkload.util.set_query_parameter(
+        args.dburl, "application_name", args.app_name if args.app_name else workload.__name__)
+
+    logging.info("URL: '%s'" % args.dburl)
+
+    # load args dict from file or string
+    if os.path.exists(args.args):
+        with open(args.args, 'r') as f:
+            args.args = yaml.safe_load(f)
+    else:
+        args.args = yaml.safe_load(args.args)
+        if isinstance(args.args, str):
+            logging.error(
+                "The value passed to '--args' is not a valid JSON or a valid path to a JSON/YAML file: '%s'" % args.args)
+            sys.exit(1)
+
+    return workload, args
 
 
 def run(args):
@@ -312,7 +339,8 @@ def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str,
                     cycle_start = time.time()
                     for txn in w.run():
                         start = time.time()
-                        run_transaction(conn, lambda conn: txn(conn))
+                        pgworkload.util.run_transaction(
+                            conn, lambda conn: txn(conn))
                         q.put((txn.__name__, time.time() - start))
 
                     c += 1
@@ -332,38 +360,6 @@ def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str,
             return
 
 
-def init_pgworkload(args):
-    logging.debug("Initialazing pgworkload")
-
-    global concurrency
-    concurrency = args.concurrency
-
-    if not re.search(r'.*://.*/(.*)\?', args.dburl):
-        logging.error(
-            "The connection string needs to point to a database. Example: postgres://root@localhost:26257/postgres?sslmode=disable")
-        sys.exit(1)
-
-    workload = import_class_at_runtime(args.workload)
-
-    args.dburl = set_query_parameter(
-        args.dburl, "application_name", args.app_name if args.app_name else workload.__name__)
-
-    logging.info("URL: '%s'" % args.dburl)
-
-    # load args dict from file or string
-    if os.path.exists(args.args):
-        with open(args.args, 'r') as f:
-            args.args = yaml.safe_load(f)
-    else:
-        args.args = yaml.safe_load(args.args)
-        if isinstance(args.args, str):
-            logging.error(
-                "The value passed to '--args' is not a valid JSON or a valid path to a JSON/YAML file: '%s'" % args.args)
-            sys.exit(1)
-
-    return workload, args
-
-
 def init(args):
     logging.debug("Running init")
 
@@ -375,7 +371,7 @@ def init(args):
 
     # PG or CRDB?
     try:
-        dbms: str = get_dbms(args.dburl)
+        dbms: str = pgworkload.util.get_dbms(args.dburl)
     except ValueError as e:
         logging.error(e)
         sys.exit(1)
@@ -399,7 +395,7 @@ def init(args):
                            args.http_server_hostname, args.http_server_port)
 
     # PART 3 - IMPORT THE DATA
-    dburl = get_new_dburl(args.dburl, args.db)
+    dburl = pgworkload.util.get_new_dburl(args.dburl, args.db)
     if args.skip_import:
         logging.debug("Skipping init_import_data")
     else:
@@ -454,7 +450,7 @@ def init_create_schema(workload: object, dburl: str, drop: bool, db_name: str, w
         logging.error("Exception: %s" % (e))
         sys.exit(1)
 
-    dburl = get_new_dburl(dburl, db_name)
+    dburl = pgworkload.util.get_new_dburl(dburl, db_name)
 
     # now that we've created the database, connect to that database
     # and load the schema, which can be in a <workload>.sql file
@@ -493,14 +489,14 @@ def init_generate_data(workload: object, exec_threads: int, workload_path: str, 
     logging.debug("Running init_generate_data")
     # description of how to generate the data is in workload variable self.load
 
-    load = get_workload_load(workload, workload_path)
+    load = pgworkload.util.get_workload_load(workload, workload_path)
     if not load:
         logging.info(
             "Data generation definition file (.yaml) or variable (self.load) not defined. Skipping")
         return
 
     # get the dirname to put the csv files
-    csv_dir: str = get_based_name_dir(workload_path)
+    csv_dir: str = pgworkload.util.get_based_name_dir(workload_path)
 
     # backup the current directory as to not override
     if os.path.isdir(csv_dir):
@@ -518,14 +514,16 @@ def init_generate_data(workload: object, exec_threads: int, workload_path: str, 
         load, exec_threads, csv_dir, '\t')
 
 
-def init_import_data(workload: object, dburl: str, workload_path: str, dbms: str, http_server_hostname: str, http_server_port: str):
+def init_import_data(workload: object, dburl: str, workload_path: str, dbms:
+                     str, http_server_hostname: str, http_server_port: str):
     logging.debug("Running init_import_data")
 
-    csv_dir = get_based_name_dir(workload_path)
-    load = get_workload_load(workload, workload_path)
+    csv_dir = pgworkload.util.get_based_name_dir(workload_path)
+    load = pgworkload.util.get_workload_load(workload, workload_path)
 
     # Start the http server in a new Process
-    mp.Process(target=httpserver, args=(csv_dir, 3000), daemon=True).start()
+    mp.Process(target=pgworkload.util.httpserver,
+               args=(csv_dir, 3000), daemon=True).start()
 
     csv_files = os.listdir(csv_dir)
 
@@ -607,167 +605,6 @@ def signal_handler(sig, frame):
     logging.info("Printing final stats")
     stats.print_stats()
     sys.exit(0)
-
-
-def httpserver(path, port=3000):
-    """Create simple http server
-
-    Args:
-        path (string): The directory to serve files from
-        port (int, optional): The http server listening port. Defaults to 3000.
-    """
-    os.chdir(path)
-
-    try:
-        with socketserver.TCPServer(server_address=("", port), RequestHandlerClass=pgworkload.util.QuietServerHandler) as httpd:
-            httpd.serve_forever()
-    except OSError as e:
-        logging.error(e)
-        return
-
-
-def set_query_parameter(url, param_name, param_value):
-    """convenience function to add a query parameter string such as '&application_name=myapp' to a url
-
-    Args:
-        url (str]): The URL string
-        param_name (str): the parameter to add
-        param_value (str): the value of the parameter
-
-    Returns:
-        str: the new URL with the added parameter
-    """
-    scheme, netloc, path, query_string, fragment = urllib.parse.urlsplit(url)
-    query_params = urllib.parse.parse_qs(query_string)
-    query_params[param_name] = [param_value]
-    new_query_string = urllib.parse.urlencode(query_params, doseq=True)
-    return urllib.parse.urlunsplit((scheme, netloc, path, new_query_string, fragment))
-
-
-def import_class_at_runtime(path: str):
-    """Imports a class with the same name of the module capitalized.
-    Example: 'workloads/bank.py' returns class 'Bank' in module 'bank'
-
-    Args:
-        path (string): the path of the module to import
-
-    Returns:
-        class: the imported class
-    """
-    # check if path is one of the built-in workloads
-    try:
-        workload = getattr(builtin_workloads, path.lower().capitalize())
-        logging.info("Loading built-in workload '%s'" %
-                     path.lower().capitalize())
-        return workload
-    except AttributeError:
-        pass
-
-    # load the module at runtime
-    sys.path.append(os.path.dirname(path))
-    module_name = os.path.splitext(os.path.basename(path))[0]
-
-    try:
-        module = importlib.import_module(module_name)
-        return getattr(module, module_name.capitalize())
-    except AttributeError as e:
-        logging.error(e)
-        sys.exit(1)
-    except ImportError as e:
-        logging.error(e)
-        sys.exit(1)
-
-
-def run_transaction(conn, op, max_retries=3):
-    """
-    Execute the operation *op(conn)* retrying serialization failure.
-
-    If the database returns an error asking to retry the transaction, retry it
-    *max_retries* times before giving up (and propagate it).
-    """
-    for retry in range(1, max_retries + 1):
-        try:
-            op(conn)
-            # If we reach this point, we were able to commit, so we break
-            # from the retry loop.
-            return
-        except psycopg.errors.SerializationFailure as e:
-            # This is a retry error, so we roll back the current
-            # transaction and sleep for a bit before retrying. The
-            # sleep time increases for each failed transaction.
-            logging.debug("psycopg.SerializationFailure:: %s", e)
-            conn.rollback()
-            time.sleep((2 ** retry) * 0.1 * (random.random() + 0.5))
-        except psycopg.Error as e:
-            raise e
-
-    raise ValueError(
-        f"Transaction did not succeed after {max_retries} retries")
-
-
-def get_based_name_dir(filepath):
-    return os.path.join(os.path.dirname(filepath), os.path.splitext(
-        os.path.basename(filepath))[0].lower())
-
-
-def get_workload_load(workload: object, workload_path: str):
-    # find if the .yaml file exists
-    yaml_file = os.path.abspath(os.path.join(os.path.dirname(workload_path), os.path.splitext(
-        os.path.basename(workload_path))[0].lower() + '.yaml'))
-
-    if os.path.exists(yaml_file):
-        logging.debug(
-            'Found data generation definition YAML file %s' % yaml_file)
-        with open(yaml_file, 'r') as f:
-            return yaml.safe_load(f)
-    else:
-        logging.debug(
-            'YAML file %s not found. Loading data generation definition from the \'load\' variable', yaml_file)
-        try:
-            return yaml.safe_load(workload.load)
-        except AttributeError as e:
-            logging.error(
-                '%s. Make sure self.load is a valid variable in __init__', e)
-            return {}
-
-
-def get_new_dburl(dburl: str, db_name: str):
-    """Return the dburl with the database name replaced.
-
-    Args:
-        dburl (str): the database connection string
-        db_name (str): the new database name
-
-    Returns:
-        str: the new connection string
-    """
-    # craft the new dburl
-    scheme, netloc, path, query_string, fragment = urllib.parse.urlsplit(dburl)
-    path = '/' + db_name
-    return urllib.parse.urlunsplit(
-        (scheme, netloc, path, query_string, fragment))
-
-
-def get_dbms(dburl: str):
-    """Identify the DBMS technology
-
-    Args:
-        dburl: The connection string to the database
-
-    Returns:
-        str: the dmbs name (CockroachDB, PostgreSQL, ...)
-    """
-    try:
-        with psycopg.connect(dburl, autocommit=True) as conn:
-            with conn.cursor() as cur:
-                cur.execute("select version();")
-                v: str = cur.fetchone()[0]
-                x: str = v.split(" ")[0]
-                if x not in SUPPORTED_DBMS:
-                    raise ValueError("Unknown DBMS: %s" % x)
-                return x
-    except Exception as e:
-        raise Exception(e)
 
 
 args = setup_parser()
