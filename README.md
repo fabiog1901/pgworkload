@@ -72,10 +72,10 @@ Init the **Bank** workload.
 
 ```bash
 # CockroachDB
-pgworkload --workload=workloads/bank.py --concurrency=8 --init --url='postgres://localhost:26257/postgres?sslmode=disable'
+pgworkload init --workload=workloads/bank.py --concurrency=8 --init --url='postgres://localhost:26257/postgres?sslmode=disable'
 
 # PostgreSQL
-pgworkload --workload=workloads/bank.py --concurrency=8 --init --url='postgres://localhost:5432/postgres?sslmode=disable'
+pgworkload init --workload=workloads/bank.py --concurrency=8 --init --url='postgres://localhost:5432/postgres?sslmode=disable'
 ```
 
 You should see something like below
@@ -99,10 +99,10 @@ Run the workload using 8 connections for 120 seconds or 100k cycles, whichever c
 
 ```bash
 # CockroachDB
-pgworkload --workload=workloads/bank.py --concurrency=8 --args='{"lane": "wire", "read_pct": 50}' --url='postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank' --duration=120 --iterations=100000
+pgworkload run --workload=workloads/bank.py --concurrency=8 --args='{"lane": "wire", "read_pct": 50}' --url='postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank' --duration=120 --iterations=100000
 
 # PostgreSQL
-pgworkload --workload=workloads/bank.py --concurrency=8 --args='{"lane": "wire", "read_pct": 50}' --url='postgres://root@localhost:5432/bank?sslmode=disable&application_name=Bank' --duration=120 --iterations=100000
+pgworkload run --workload=workloads/bank.py --concurrency=8 --args='{"lane": "wire", "read_pct": 50}' --url='postgres://root@localhost:5432/bank?sslmode=disable&application_name=Bank' --duration=120 --iterations=100000
 ```
 
 `pgworkload` uses exclusively the excellent [Psycopg 3](https://www.psycopg.org/psycopg3/docs/) to connect.
@@ -164,7 +164,7 @@ WHERE id = 1234;
 Run **Querybench** like this:
 
 ```bash
-pgworkload --workload=querybench --args=mystmts.sql --url=<conn-string>
+pgworkload run --workload=querybench --args=mystmts.sql --url=<conn-string>
 ```
 
 ### Hovr
