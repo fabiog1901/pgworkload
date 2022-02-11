@@ -26,7 +26,10 @@ SUPPORTED_DBMS = ["PostgreSQL", "CockroachDB"]
 
 
 def main():
-    args.func(args)
+    try:
+        args.func(args)
+    except:
+        args.parser.print_help()
 
 
 def setup_parser():
@@ -40,13 +43,14 @@ def setup_parser():
     root = argparse.ArgumentParser(description='pgworkload  - workload framework for the PostgreSQL protocol',
                                    epilog='GitHub: <https://github.com/fabiog1901/pgworkload>',
                                    parents=[])
+    root.set_defaults(parser=root)
 
     root_sub = root.add_subparsers(help='')
 
     # workload options (common to root_init and root_run)
     workload_parser = argparse.ArgumentParser(add_help=False)
 
-    workload_parser.add_argument('-w', '--workload', dest='workload',  required=True,
+    workload_parser.add_argument('-w', '--workload', dest='workload',
                                  help="Path to the workload module. Eg: workloads/bank.py for class 'Bank'")
     workload_parser.add_argument('--args', dest='args', default='{}',
                                  help='JSON string, or filepath to a JSON/YAML string, to pass to Workload')
@@ -74,6 +78,7 @@ def setup_parser():
                            help="Don't generate the CSV data files")
     root_init.add_argument('--skip-import', default=False, dest='skip_import', action=argparse.BooleanOptionalAction,
                            help="Don't import the CSV dataset files")
+    root_init.set_defaults(parser=root_init)
     root_init.set_defaults(func=init)
 
     # root -> run
@@ -89,6 +94,7 @@ def setup_parser():
                           help="Total number of iterations. (default = 0 --> ad infinitum)")
     root_run.add_argument('-d', '--duration', dest="duration", default=0, type=int,
                           help="Duration in seconds. (default = 0 --> ad infinitum)")
+    root_run.set_defaults(parser=root_run)
     root_run.set_defaults(func=run)
 
     # root -> util
@@ -96,6 +102,7 @@ def setup_parser():
                                     description='description: Generate YAML data generation files and CSV datasets',
                                     epilog='GitHub: <https://github.com/fabiog1901/pgworkload>',)
 
+    root_util.set_defaults(parser=root_util)
     root_util_sub = root_util.add_subparsers()
 
     # root -> util -> yaml
@@ -754,5 +761,5 @@ def get_dbms(dburl: str):
 args = setup_parser()
 
 # setup global logging
-logging.basicConfig(level=getattr(logging, args.loglevel.upper(), logging.INFO),
+logging.basicConfig(level=getattr(logging, vars(args).get('loglevel', 'INFO').upper(), logging.INFO),
                     format='%(asctime)s [%(levelname)s] (%(processName)s %(process)d) %(message)s')
