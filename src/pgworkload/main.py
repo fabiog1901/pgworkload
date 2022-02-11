@@ -110,7 +110,7 @@ def setup_parser():
                                               description='description: Generate YAML data generation file from a DDL SQL file',
                                               epilog='GitHub: <https://github.com/fabiog1901/pgworkload>',
                                               parents=[common_parser])
-    root_util_yaml.add_argument('-i', '--input', dest='input', type=str, default='', required=True,
+    root_util_yaml.add_argument('-i', '--input', dest='input', type=str, default='',
                                 help='Filepath to the DDL SQL file')
     root_util_yaml.add_argument('-o', '--output', dest='output', type=str, default='',
                                 help='Output filepath. (default = <input-basename>.yaml)')
@@ -121,7 +121,7 @@ def setup_parser():
                                              description='description: Generate CSV files from a a YAML data generation file',
                                              epilog='GitHub: <https://github.com/fabiog1901/pgworkload>',
                                              parents=[common_parser])
-    root_util_csv.add_argument('-i', '--input', dest='input', type=str, required=True,
+    root_util_csv.add_argument('-i', '--input', dest='input', type=str,
                                help='Filepath to the YAML data generation file')
     root_util_csv.add_argument('-o', '--output', dest='output', type=str, default='',
                                help='Output directory for the CSV files. (default = <input-basename>)')
@@ -164,13 +164,14 @@ def util_csv(args):
     else:
         output_dir = args.output
 
-    # if the output dir is
-    if os.path.exists(output_dir):
-        output_dir += '_dir'
     # backup the current directory as to not override
     if os.path.isdir(output_dir):
         os.rename(output_dir, output_dir + '.' +
                   dt.datetime.utcnow().strftime('%Y%m%d-%H%M%S'))
+
+    # if the output dir is
+    if os.path.exists(output_dir):
+        output_dir += '_dir'
 
     # create new directory
     os.mkdir(output_dir)
