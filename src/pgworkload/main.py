@@ -510,7 +510,7 @@ def init_generate_data(workload: object, exec_threads: int, workload_path: str, 
     compression = 'gzip' if dbms == "CockroachDB" else None
 
     # generate the data by parsing the load variable
-    SimpleFaker(compression=compression, seed=0).generate(
+    pgworkload.simplefaker.SimpleFaker(compression=compression, seed=0).generate(
         load, exec_threads, csv_dir, '\t')
 
 
