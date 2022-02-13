@@ -19,11 +19,11 @@ import yaml
 
 DEFAULT_SLEEP = 5
 
-
 def main():
     try:
         args.func(args)
     except Exception as e:
+        logging.error(e)
         args.parser.print_help()
 
 
@@ -133,50 +133,6 @@ def setup_parser():
     return root.parse_args()
 
 
-def util_yaml(args):
-    with open(args.input, 'r') as f:
-        ddl = f.read()
-
-    if not args.output:
-        output = pgworkload.util.get_based_name_dir(args.input) + '.yaml'
-    else:
-        output = args.output
-
-    # backup the current file as to not override
-    if os.path.exists(output):
-        os.rename(output, output + '.' +
-                  dt.datetime.utcnow().strftime('%Y%m%d-%H%M%S'))
-
-    # create new directory
-    with open(output, 'w') as f:
-        f.write(pgworkload.util.ddl_to_yaml(ddl))
-
-
-def util_csv(args):
-    with open(args.input, 'r') as f:
-        load = yaml.safe_load(f.read())
-
-    if not args.output:
-        output_dir = pgworkload.util.get_based_name_dir(args.input)
-    else:
-        output_dir = args.output
-
-    # backup the current directory as to not override
-    if os.path.isdir(output_dir):
-        os.rename(output_dir, output_dir + '.' +
-                  dt.datetime.utcnow().strftime('%Y%m%d-%H%M%S'))
-
-    # if the output dir is
-    if os.path.exists(output_dir):
-        output_dir += '_dir'
-
-    # create new directory
-    os.mkdir(output_dir)
-
-    pgworkload.simplefaker.SimpleFaker(compression=args.compression).generate(
-        load, args.threads, output_dir,  args.delimiter)
-
-
 def init_pgworkload(args):
     logging.debug("Initialazing pgworkload")
 
@@ -188,6 +144,9 @@ def init_pgworkload(args):
             "The connection string needs to point to a database. Example: postgres://root@localhost:26257/postgres?sslmode=disable")
         sys.exit(1)
 
+    if not args.workload:
+        logging.error("No workload argument was passed")
+        sys.exit(1)
     workload = pgworkload.util.import_class_at_runtime(args.workload)
 
     args.dburl = pgworkload.util.set_query_parameter(
@@ -574,6 +533,50 @@ def init_import_data(workload: object, dburl: str, workload_path: str, dbms:
     except Exception as e:
         logging.error("Exception: %s" % (e))
         sys.exit(1)
+
+
+def util_csv(args):
+    with open(args.input, 'r') as f:
+        load = yaml.safe_load(f.read())
+
+    if not args.output:
+        output_dir = pgworkload.util.get_based_name_dir(args.input)
+    else:
+        output_dir = args.output
+
+    # backup the current directory as to not override
+    if os.path.isdir(output_dir):
+        os.rename(output_dir, output_dir + '.' +
+                  dt.datetime.utcnow().strftime('%Y%m%d-%H%M%S'))
+
+    # if the output dir is
+    if os.path.exists(output_dir):
+        output_dir += '_dir'
+
+    # create new directory
+    os.mkdir(output_dir)
+
+    pgworkload.simplefaker.SimpleFaker(compression=args.compression).generate(
+        load, args.threads, output_dir,  args.delimiter)
+
+
+def util_yaml(args):
+    with open(args.input, 'r') as f:
+        ddl = f.read()
+
+    if not args.output:
+        output = pgworkload.util.get_based_name_dir(args.input) + '.yaml'
+    else:
+        output = args.output
+
+    # backup the current file as to not override
+    if os.path.exists(output):
+        os.rename(output, output + '.' +
+                  dt.datetime.utcnow().strftime('%Y%m%d-%H%M%S'))
+
+    # create new directory
+    with open(output, 'w') as f:
+        f.write(pgworkload.util.ddl_to_yaml(ddl))
 
 
 def signal_handler(sig, frame):

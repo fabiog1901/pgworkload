@@ -13,6 +13,7 @@ import tabulate
 import time
 import urllib
 import yaml
+import prometheus_client
 
 RESERVED_WORDS = ['unique', 'inverted', 'index', 'constraint',
                   'family', 'like', 'primary', 'key',
@@ -38,24 +39,30 @@ class Stats:
         self.cumulative_counts = {}
         self.instantiation_time = time.time()
         self.frequency = frequency
+
+        self.prom_latency = {}
+        prometheus_client.start_http_server(26260)
+
         self.new_window()
 
     # reset stats while keeping cumulative counts
+
     def new_window(self):
-        try:
-            self.window_start_time = time.time()
-            self.window_stats = {}
-        finally:
-            pass
+        self.window_start_time = time.time()
+        self.window_stats = {}
 
     # add one latency measurement in seconds
-    def add_latency_measurement(self, action, measurement):
-        try:
-            self.window_stats.setdefault(action, []).append(measurement)
-            self.cumulative_counts.setdefault(action, 0)
-            self.cumulative_counts[action] += 1
-        finally:
-            pass
+
+    def add_latency_measurement(self, action: str, measurement):
+        self.window_stats.setdefault(action, []).append(measurement)
+        self.cumulative_counts.setdefault(action, 0)
+        self.cumulative_counts[action] += 1
+
+        if action not in self.prom_latency:
+            self.prom_latency[action] = prometheus_client.Summary(f'latency_{action}',
+                                                                  f'Latency for transaction {action}')
+
+        self.prom_latency.get(action).observe(measurement)
 
     # print the current stats this instance has collected.
     # If action_list is empty, it will only prevent rows it has captured this period, otherwise it will print a row for each action.
