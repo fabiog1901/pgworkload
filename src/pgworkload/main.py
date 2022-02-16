@@ -70,7 +70,7 @@ def setup_parser():
                                     description='description: Run the workload',
                                     epilog='GitHub: <https://github.com/fabiog1901/pgworkload>',
                                     parents=[common_parser, workload_parser])
-    root_init.add_argument('--drop', default=False, dest='drop', action=argparse.BooleanOptionalAction,
+    root_init.add_argument('--drop', default=False, dest='drop', action='store_true',
                            help="Drop the database if it exists")
     root_init.add_argument('--db', default='', dest='db', type=str,
                            help="Override the default DB name. (default = <value passed in --workload>)")
@@ -78,11 +78,11 @@ def setup_parser():
                            help="The hostname of the http server that serves the CSV files. (defaults = <inferred>)")
     root_init.add_argument('-p', '--port', dest='http_server_port', default='3000',
                            help="The port of the http server that servers the CSV files. (defaults = 3000)")
-    root_init.add_argument('--skip-schema', default=False, dest='skip_schema', action=argparse.BooleanOptionalAction,
+    root_init.add_argument('-s', '--skip-schema', default=False, dest='skip_schema', action='store_true',
                            help="Don't run the schema creation script")
-    root_init.add_argument('--skip-gen', default=False, dest='skip_gen', action=argparse.BooleanOptionalAction,
+    root_init.add_argument('-g', '--skip-gen', default=False, dest='skip_gen', action='store_true',
                            help="Don't generate the CSV data files")
-    root_init.add_argument('--skip-import', default=False, dest='skip_import', action=argparse.BooleanOptionalAction,
+    root_init.add_argument('-i', '--skip-import', default=False, dest='skip_import', action='store_true',
                            help="Don't import the CSV dataset files")
     root_init.set_defaults(parser=root_init)
     root_init.set_defaults(func=init)
@@ -100,6 +100,8 @@ def setup_parser():
                           help="Total number of iterations. (default = 0 --> ad infinitum)")
     root_run.add_argument('-d', '--duration', dest="duration", default=0, type=int,
                           help="Duration in seconds. (default = 0 --> ad infinitum)")
+    root_run.add_argument('-p', '--port', dest='prom_port', default='26260', type=int,
+                           help="The port of the Prometheus server. (defaults = 26260)")
     root_run.set_defaults(parser=root_run)
     root_run.set_defaults(func=run)
 
@@ -240,7 +242,7 @@ def run(args: argparse.Namespace):
 
     signal.signal(signal.SIGINT, signal_handler)
 
-    stats = pgworkload.util.Stats(frequency=args.frequency)
+    stats = pgworkload.util.Stats(frequency=args.frequency, prom_port=args.prom_port)
 
     if args.iterations > 0:
         args.iterations = int(args.iterations / args.concurrency)

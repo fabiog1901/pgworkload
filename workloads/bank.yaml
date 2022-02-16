@@ -1,5 +1,5 @@
 ref_data:
-  - count: 10000
+  - count: 10000000
     sort-by:
       - my_sequence
     tables:
@@ -28,7 +28,7 @@ ref_data:
             - foxtrot
             - golf
           weights: 
-            - 8
+            - 3
             - 1
             - 1
             - 1
@@ -43,19 +43,19 @@ ref_data:
       my_integer:
         type: integer
         args:
-          start: 1000
-          end: 9999
+          start: 1000000
+          end: 10000000
           seed: 0
-          null_pct: 0.3
+          null_pct: 0.2
           array: 0
       my_float:
         type: float
         args:
-          max: 100000
+          max: 10000000
           round: 2
           seed: 0
           null_pct: 0.1
-          array: 2
+          array: 10
       my_timestamp:
         type: timestamp
         args:
@@ -90,20 +90,20 @@ ref_data:
       my_string:
         type: string
         args:
-          min: 10
-          max: 50
+          min: 100
+          max: 500
           seed: 0
-          null_pct: 0.5
+          null_pct: 0.2
           array: 3
       my_bool:
         type: bool
         args:
           seed: 0
-          null_pct: 0.5
+          null_pct: 0.2
       my_json:
         type: jsonb
         args:
-          min: 10
-          max: 50
+          min: 500
+          max: 10000
           seed: 0
-          null_pct: 0.5
+          null_pct: 0.2

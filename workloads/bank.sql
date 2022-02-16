@@ -21,3 +21,5 @@ CREATE TABLE IF NOT EXISTS transactions (
     ts TIMESTAMP,
     PRIMARY KEY (lane, id, event)
 );
+
+ALTER TABLE transactions SPLIT AT VALUES ('ACH'), ('WIRE'), ('DEPO');
