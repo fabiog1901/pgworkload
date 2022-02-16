@@ -61,11 +61,8 @@ class Stats:
         self.cumulative_counts[action] += 1
 
         if action not in self.prom_latency:
-            # self.prom_latency[action] = prometheus_client.Summary(f'latency_{action}',
-            #                                                       f'Latency for transaction {action}')
-            self.prom_latency[action] = prometheus_client.Histogram(
-                f'latency_{action}', f'Latency for transaction {action}', buckets=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1])
-
+            self.prom_latency[action] = prometheus_client.Summary(f'latency_{action}',
+                                                                  f'Latency for transaction {action}')
         self.prom_latency.get(action).observe(measurement)
 
     # print the current stats this instance has collected.
@@ -148,7 +145,7 @@ def import_class_at_runtime(path: str):
     try:
         workload = getattr(pgworkload.builtin_workloads,
                            path.lower().capitalize())
-        logging.info(msg=f"Loading built-in workload '{path.lower().capitalize()}'")
+        logging.info(f"Loading built-in workload '{path.lower().capitalize()}'")
         return workload
     except AttributeError:
         pass
@@ -161,10 +158,10 @@ def import_class_at_runtime(path: str):
         module = importlib.import_module(module_name)
         return getattr(module, module_name.capitalize())
     except AttributeError as e:
-        logging.error(msg=e)
+        logging.error(e)
         sys.exit(1)
     except ImportError as e:
-        logging.error(msg=e)
+        logging.error(e)
         sys.exit(1)
 
 
@@ -185,7 +182,7 @@ def run_transaction(conn: psycopg.Connection, op, max_retries=3):
             # This is a retry error, so we roll back the current
             # transaction and sleep for a bit before retrying. The
             # sleep time increases for each failed transaction.
-            logging.debug(msg=f'psycopg.SerializationFailure:: {e}')
+            logging.debug(f'psycopg.SerializationFailure:: {e}')
             conn.rollback()
             time.sleep((2 ** retry) * 0.1 * (random.random() + 0.5))
         except psycopg.Error as e:
@@ -221,17 +218,17 @@ def get_workload_load(workload_path: str):
     yaml_file = os.path.abspath(get_based_name_dir(workload_path) + '.yaml')
 
     if os.path.exists(yaml_file):
-        logging.debug(msg=
+        logging.debug(
             'Found data generation definition YAML file %s' % yaml_file)
         with open(yaml_file, 'r') as f:
             return yaml.safe_load(f)
     else:
-        logging.debug(msg=f'YAML file {yaml_file} not found. Loading data generation definition from the \'load\' variable')
+        logging.debug(f'YAML file {yaml_file} not found. Loading data generation definition from the \'load\' variable')
         try:
             workload = import_class_at_runtime(workload_path)
             return yaml.safe_load(workload({}).load)
         except AttributeError as e:
-            logging.warning(msg=f'{e}. Make sure self.load is a valid variable in __init__')
+            logging.warning(f'{e}. Make sure self.load is a valid variable in __init__')
             return {}
 
 
@@ -287,7 +284,7 @@ def httpserver(path: str, port: int = 3000):
         with socketserver.TCPServer(server_address=("", port), RequestHandlerClass=QuietServerHandler) as httpd:
             httpd.serve_forever()
     except OSError as e:
-        logging.error(msg=e)
+        logging.error(e)
         return
 
 
