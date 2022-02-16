@@ -12,7 +12,7 @@ class Bank:
         # args is a dict of string passed with the --args flag
         # user passed a yaml/json, in python that's a dict object
 
-        self.read_pct: float = float(args.get('read_pct', 50) / 100)
+        self.read_pct: float = float(args.get('read_pct', 100) / 100)
         self.lane: str = args.get('lane', 'wire')
 
         # self.schema holds the DDL
@@ -68,6 +68,7 @@ credits:
         with conn.cursor() as cur:
             cur.execute("select * from transactions where id = %s", (self.uuid, ))
             cur.fetchone()
+            time.sleep(.5)
 
     def txn1_new(self, conn: psycopg.Connection):
         # simulate microservice doing something
@@ -92,7 +93,7 @@ credits:
                 cur.fetchone()
 
                 # simulate microservice doing something
-                time.sleep(0.005)
+                time.sleep(0.5)
                 self.ts = dt.datetime.now()
                 self.event = 1
 
