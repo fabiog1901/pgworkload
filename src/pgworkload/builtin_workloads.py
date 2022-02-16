@@ -33,7 +33,7 @@ class Querybench():
 
 
 class Hovr():
-    """Hovr is a spin-off of the original CockroachLabs Movr workload
+    """Hovr is a spin-off of the original Movr workload by Cockroach Labs
     """
 
     def __init__(self, args: dict):

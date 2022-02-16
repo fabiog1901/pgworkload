@@ -1,15 +1,15 @@
 import bisect
+import csv
 import datetime as dt
 import itertools
 import logging
 import math
+import multiprocessing as mp
 import numpy as np
+import os
+import pandas as pd
 import string
 import uuid
-import pandas as pd
-import multiprocessing as mp
-import os
-import csv
 
 
 class SimpleFaker:
@@ -337,7 +337,7 @@ class SimpleFaker:
         for table_name, table_details in load.items():
             csv_file_basename = os.path.join(csv_dir, table_name)
 
-            logging.info("Generating dataset for table '%s'" % table_name)
+            logging.info(msg=f"Generating dataset for table '{table_name}'")
 
             for item in table_details:
                 col_names = list(item['tables'].keys())
@@ -347,7 +347,7 @@ class SimpleFaker:
                     item['tables'][col] = self.__get_simplefaker_objects(
                         col_details['type'], col_details['args'], item['count'], exec_threads)
 
-                    logging.debug('Writing CSV files...')
+                    logging.debug(msg='Writing CSV files...')
 
                     # create a zip object so that generators are paired together
                     z = zip(*[x for x in item['tables'].values()])
@@ -456,7 +456,7 @@ class SimpleFaker:
             sort_by (list): the column to sort by
             separator (str): the field delimiter in the CSV file
         """
-        logging.debug("SimpleFaker worker created")
+        logging.debug(msg="SimpleFaker worker created")
         if iterations > self.csv_max_rows:
             count = int(iterations/self.csv_max_rows)
             rem = iterations % self.csv_max_rows

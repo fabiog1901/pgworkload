@@ -11,7 +11,7 @@ import socketserver
 import sys
 import tabulate
 import time
-import urllib
+import urllib.parse
 import yaml
 import prometheus_client
 
@@ -116,7 +116,7 @@ class Stats:
             pass
 
 
-def set_query_parameter(url, param_name, param_value):
+def set_query_parameter(url: str, param_name: str, param_value: str):
     """convenience function to add a query parameter string such as '&application_name=myapp' to a url
 
     Args:
@@ -148,8 +148,7 @@ def import_class_at_runtime(path: str):
     try:
         workload = getattr(pgworkload.builtin_workloads,
                            path.lower().capitalize())
-        logging.info("Loading built-in workload '%s'" %
-                     path.lower().capitalize())
+        logging.info(msg=f"Loading built-in workload '{path.lower().capitalize()}'")
         return workload
     except AttributeError:
         pass
@@ -162,14 +161,14 @@ def import_class_at_runtime(path: str):
         module = importlib.import_module(module_name)
         return getattr(module, module_name.capitalize())
     except AttributeError as e:
-        logging.error(e)
+        logging.error(msg=e)
         sys.exit(1)
     except ImportError as e:
-        logging.error(e)
+        logging.error(msg=e)
         sys.exit(1)
 
 
-def run_transaction(conn, op, max_retries=3):
+def run_transaction(conn: psycopg.Connection, op, max_retries=3):
     """
     Execute the operation *op(conn)* retrying serialization failure.
 
@@ -186,7 +185,7 @@ def run_transaction(conn, op, max_retries=3):
             # This is a retry error, so we roll back the current
             # transaction and sleep for a bit before retrying. The
             # sleep time increases for each failed transaction.
-            logging.debug("psycopg.SerializationFailure:: %s", e)
+            logging.debug(msg=f'psycopg.SerializationFailure:: {e}')
             conn.rollback()
             time.sleep((2 ** retry) * 0.1 * (random.random() + 0.5))
         except psycopg.Error as e:
@@ -222,19 +221,17 @@ def get_workload_load(workload_path: str):
     yaml_file = os.path.abspath(get_based_name_dir(workload_path) + '.yaml')
 
     if os.path.exists(yaml_file):
-        logging.debug(
+        logging.debug(msg=
             'Found data generation definition YAML file %s' % yaml_file)
         with open(yaml_file, 'r') as f:
             return yaml.safe_load(f)
     else:
-        logging.debug(
-            'YAML file %s not found. Loading data generation definition from the \'load\' variable', yaml_file)
+        logging.debug(msg=f'YAML file {yaml_file} not found. Loading data generation definition from the \'load\' variable')
         try:
             workload = import_class_at_runtime(workload_path)
             return yaml.safe_load(workload({}).load)
         except AttributeError as e:
-            logging.warning(
-                '%s. Make sure self.load is a valid variable in __init__', e)
+            logging.warning(msg=f'{e}. Make sure self.load is a valid variable in __init__')
             return {}
 
 
@@ -290,7 +287,7 @@ def httpserver(path: str, port: int = 3000):
         with socketserver.TCPServer(server_address=("", port), RequestHandlerClass=QuietServerHandler) as httpd:
             httpd.serve_forever()
     except OSError as e:
-        logging.error(e)
+        logging.error(msg=e)
         return
 
 
