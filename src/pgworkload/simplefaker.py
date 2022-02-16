@@ -1,22 +1,24 @@
 import bisect
+import csv
 import datetime as dt
 import itertools
 import logging
 import math
+import multiprocessing as mp
 import numpy as np
+import os
+import pandas as pd
 import string
 import uuid
-import pandas as pd
-import multiprocessing as mp
-import os
-import csv
 
 
 class SimpleFaker:
+    """Pseudo-random data generator based on 
+    the NumPy random generator class.
+    """
 
-    def __init__(self, seed: int = None, csv_max_rows: int = 1000000, compression: str = 'gzip'):
+    def __init__(self, seed: int = None, csv_max_rows: int = 1000000):
         self.csv_max_rows: int = csv_max_rows
-        self.compression: str = compression
         self.rng: np.random.Generator = np.random.default_rng(seed=seed)
 
     class Costant:
@@ -154,7 +156,7 @@ class SimpleFaker:
             self.min = 10 if min_num is None else max(min_num-9, 1)
             self.max = 50 if max_num is None else max(max_num-9, 2)
             super().__init__(min=self.min, max=self.max,
-                             null_pct=null_pct, bitgenerator=bitgenerator)
+                             null_pct=null_pct, bitgenerator=bitgenerator, array=0)
 
         def __next__(self):
             v = super().__next__()
@@ -299,6 +301,70 @@ class SimpleFaker:
             return [population[bisect.bisect(cum_weights, random() * total, 0, hi)]
                     for i in itertools.repeat(None, k)]
 
+
+    def division_with_modulo(self, total: int, divider: int):
+        """Split a number into chunks.
+        Eg: total=10, divider=3 returns [3,3,4] 
+
+        Args:
+            total (int): The number to divide
+            divider (int): the count of chunks
+
+        Returns:
+            (list): the list of the individual chunks
+        """
+        rows_to_process = int(total/divider)
+        rows_left_over = total % divider
+
+        if rows_left_over == 0:
+            return [rows_to_process] * divider
+        else:
+            l = [rows_to_process] * (divider-1)
+            l.append(rows_to_process + rows_left_over)
+            return l
+
+    def generate(self, load: dict, exec_threads: int, csv_dir: str, delimiter: str, compression: str):
+        """Generate the CSV datasets
+
+        Args:
+            load (dict): the data generation definition
+            exec_threads (int): count of processes for parallel execution
+            csv_dir (str): destination directory for the CSV files
+            delimiter (str): field delimiter
+            compression (str): the compression format (gzip, zip, None..)
+        """
+
+        for table_name, table_details in load.items():
+            csv_file_basename = os.path.join(csv_dir, table_name)
+
+            logging.info(f"Generating dataset for table '{table_name}'")
+
+            for item in table_details:
+                col_names = list(item['tables'].keys())
+                sort_by = item.get('sort-by', [])
+                for col, col_details in item['tables'].items():
+                    # get the list of simplefaker objects with different seeds
+                    item['tables'][col] = self.__get_simplefaker_objects(
+                        col_details['type'], col_details['args'], item['count'], exec_threads)
+
+                # create a zip object so that generators are paired together
+                z = zip(*[x for x in item['tables'].values()])
+
+                rows_chunk = self.division_with_modulo(item['count'], exec_threads)
+                procs = []
+                for i, rows in enumerate(rows_chunk):
+                    output_file = csv_file_basename + '.' + \
+                        str(table_details.index(item)) + '_' + str(i)
+
+                    p = mp.Process(target=self.worker, daemon=True, args=(
+                        next(z), rows, output_file, col_names, sort_by, delimiter, compression))
+                    p.start()
+                    procs.append(p)
+
+                # wait for all workers to exit
+                for p in procs:
+                    p.join()
+
     def __get_simplefaker_objects(self, type: str, args: dict, count: int, exec_threads: int):
         """Returns a list of SimpleFaker objects based on the number of execution threads.
         Each SimpleFaker object in the list has its own seed number
@@ -376,7 +442,18 @@ class SimpleFaker:
             raise ValueError(
                 f"SimpleFaker type not implemented or recognized: '{type}'")
 
-    def worker(self, generators: tuple, iterations: int, basename: str, col_names: list, sort_by: list, separator: str):
+    def worker(self, generators: tuple, iterations: int, basename: str, col_names: list, sort_by: list, separator: str, compression: str):
+        """Process worker function to generate the data in a multiprocessing env
+
+        Args:
+            generators (tuple): the SimpleFaker data gen objects 
+            iterations (int): count of rows to generate
+            basename (str): the basename of the output csv file
+            col_names (list): the csv column names, used for sorting
+            sort_by (list): the column to sort by
+            separator (str): the field delimiter in the CSV file
+            compression (str): the compression format (gzip, zip, None..)
+        """
         logging.debug("SimpleFaker worker created")
         if iterations > self.csv_max_rows:
             count = int(iterations/self.csv_max_rows)
@@ -386,23 +463,22 @@ class SimpleFaker:
             count = 1
             rem = 0
 
-        if self.compression == 'gzip':
+        if compression == 'gzip':
             suffix = '.csv.gz'
-        elif self.compression == 'zip':
+        elif compression == 'zip':
             suffix = '.csv.zip'
-        elif self.compression == None:
-            suffix = '.csv'
         else:
             suffix = '.csv'
-
+        
         for x in range(count):
             pd.DataFrame(
                 [row for row in [[next(x) for x in generators]
                                  for _ in range(iterations)]],
                 columns=col_names)\
                 .sort_values(by=sort_by)\
-                .to_csv(basename + '_' + str(x) + suffix, quoting=csv.QUOTE_NONE, sep=separator, header=False, index=False, compression=self.compression)
-
+                .to_csv(basename + '_' + str(x) + suffix, quoting=csv.QUOTE_NONE, sep=separator, header=False, index=False, compression=compression)
+            logging.debug(f"Saved file '{basename + '_' + str(x) + suffix}'")
+            
         # remaining rows, if any
         if rem > 0:
             pd.DataFrame(
@@ -410,53 +486,6 @@ class SimpleFaker:
                                  for _ in range(rem)]],
                 columns=col_names)\
                 .sort_values(by=sort_by)\
-                .to_csv(basename + '_' + str(count) + suffix, sep=separator, header=False, index=False, compression=self.compression)
+                .to_csv(basename + '_' + str(count) + suffix, sep=separator, header=False, index=False, compression=compression)
 
-    def __division_with_modulo(self, total: int, divider: int):
-        rows_to_process = int(total/divider)
-        rows_left_over = total % divider
-
-        if rows_left_over == 0:
-            return [rows_to_process] * divider
-        else:
-            l = [rows_to_process] * (divider-1)
-            l.append(rows_to_process + rows_left_over)
-            return l
-
-    def __write_csvs(self, obj, basename, col_names, sort_by, exec_threads, delimiter):
-        logging.debug('Writing CSV files...')
-
-        # create a zip object so that generators are paired together
-        z = zip(*[x for x in obj['tables'].values()])
-
-        rows_chunk = self.__division_with_modulo(obj['count'], exec_threads)
-        procs = []
-        for i, rows in enumerate(rows_chunk):
-            output_file = basename + '_' + str(i)
-
-            p = mp.Process(target=self.worker, daemon=True, args=(
-                next(z), rows, output_file, col_names, sort_by, delimiter))
-            p.start()
-            procs.append(p)
-
-        # wait for all workers to exit
-        for p in procs:
-            p.join()
-
-    def generate(self, load: dict, exec_threads: int, csv_dir: str, delimiter: str):
-
-        for table_name, table_details in load.items():
-            csv_file_basename = os.path.join(csv_dir, table_name)
-
-            logging.info("Generating dataset for table '%s'" % table_name)
-
-            for item in table_details:
-                col_names = list(item['tables'].keys())
-                sort_by = item.get('sort-by', [])
-                for col, col_details in item['tables'].items():
-                    # get the list of simplefaker objects with different seeds
-                    item['tables'][col] = self.__get_simplefaker_objects(
-                        col_details['type'], col_details['args'], item['count'], exec_threads)
-
-                self.__write_csvs(item, csv_file_basename + '.' +
-                                  str(table_details.index(item)), col_names, sort_by, exec_threads, delimiter)
+            logging.debug(f"Saved file '{basename + '_' + str(x) + suffix}'")

@@ -32,7 +32,7 @@ class Bank:
         self.load: str = """ 
 # This has to be a YAML string so 
 # it's important it starts with no indentation
-# it's easier however, to pass a .yaml file instead
+# it's easier however, to pass a .yaml file instead 
 credits:
   - count: 2000
     sort-by:
@@ -68,6 +68,7 @@ credits:
         with conn.cursor() as cur:
             cur.execute("select * from transactions where id = %s", (self.uuid, ))
             cur.fetchone()
+            time.sleep(.5)
 
     def txn1_new(self, conn: psycopg.Connection):
         # simulate microservice doing something
@@ -92,7 +93,7 @@ credits:
                 cur.fetchone()
 
                 # simulate microservice doing something
-                time.sleep(0.005)
+                time.sleep(0.5)
                 self.ts = dt.datetime.now()
                 self.event = 1
 

@@ -5,7 +5,7 @@ import psycopg
 class Querybench():
     """Querybench runs the passed SQL statements
     sequentially and iteratively.
-    
+
     The workload assumes the schema and data is pre-loaded.
     """
 
@@ -23,7 +23,7 @@ class Querybench():
 
     def init(self, conn: psycopg.Connection):
         pass
-            
+
     def run(self):
         return [self.txn for _ in self.stmts]
 
@@ -33,7 +33,7 @@ class Querybench():
 
 
 class Hovr():
-    """Hovr is a spin-off of the original CockroachLabs Movr workload
+    """Hovr is a spin-off of the original Movr workload by Cockroach Labs
     """
 
     def __init__(self, args: dict):
@@ -69,7 +69,7 @@ credits:
 
     def init(self, conn: psycopg.Connection):
         pass
-            
+
     def run(self):
         return []
 
