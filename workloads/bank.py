@@ -12,7 +12,7 @@ class Bank:
         # args is a dict of string passed with the --args flag
         # user passed a yaml/json, in python that's a dict object
 
-        self.read_pct: float = float(args.get('read_pct', 100) / 100)
+        self.read_pct: float = float(args.get('read_pct', 50) / 100)
         self.lane: str = args.get('lane', 'wire')
 
         # self.schema holds the DDL
