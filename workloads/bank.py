@@ -13,7 +13,9 @@ class Bank:
         # user passed a yaml/json, in python that's a dict object
 
         self.read_pct: float = float(args.get('read_pct', 50) / 100)
-        self.lane: str = args.get('lane', 'wire')
+
+        self.lane: str = random.choice(['ACH', 'DEPO', 'WIRE']) if not args.get(
+            'lane', '') else args['lane']
 
         # self.schema holds the DDL
         self.schema: str = """
@@ -49,8 +51,8 @@ credits:
         self.ts: dt.datetime = ''
         self.event: str = ''
 
-
     # the 'init' method is executed once, when the --init flag is passed
+
     def init(self, conn: psycopg.Connection):
         with conn.cursor() as cur:
             logging.info(cur.execute('select version();').fetchone())
@@ -66,9 +68,9 @@ credits:
     # conn is set with autocommit=True, so no need to send a commit message
     def read(self, conn: psycopg.Connection):
         with conn.cursor() as cur:
-            cur.execute("select * from transactions where id = %s", (self.uuid, ))
+            cur.execute(
+                "select * from transactions lane = %s and id = %s", (self.lane, self.uuid))
             cur.fetchone()
-            time.sleep(.5)
 
     def txn1_new(self, conn: psycopg.Connection):
         # simulate microservice doing something
@@ -93,7 +95,7 @@ credits:
                 cur.fetchone()
 
                 # simulate microservice doing something
-                time.sleep(0.5)
+                time.sleep(0.01)
                 self.ts = dt.datetime.now()
                 self.event = 1
 
@@ -113,7 +115,7 @@ credits:
                 # simulate microservice doing something
                 self.ts = dt.datetime.now()
                 self.event = 2
-                time.sleep(0.010)
+                time.sleep(0.01)
 
                 stmt = """
                     insert into transactions values (%s, %s, %s, %s);

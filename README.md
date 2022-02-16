@@ -39,29 +39,23 @@ Let's run the sample **Bank** workload.
 
 ### Step 0 - Create Python env
 
-Let's create a Virtual environment for our testing
-
 ```bash
-python3 -m venv venv
-cd venv
-source bin/activate
+# upgrade pip - must have pip version 20.3+ 
+pip3 install --upgrade pip
 
 # we're now inside our virtual env
 pip3 install pgworkload
 
 # download the bank workload files
 mkdir workloads
+# the workload class
 wget -P workloads https://raw.githubusercontent.com/fabiog1901/pgworkload/main/workloads/bank.py
+# the schema file
 wget -P workloads https://raw.githubusercontent.com/fabiog1901/pgworkload/main/workloads/bank.sql
+# the data generation definition file
 wget -P workloads https://raw.githubusercontent.com/fabiog1901/pgworkload/main/workloads/bank.yaml
+# the arguments to pass at runtime, optional
 wget -P workloads https://raw.githubusercontent.com/fabiog1901/pgworkload/main/workloads/bank.args.yaml
-```
-
-Just to confirm:
-
-```bash
-(venv) $ python3 -V
-Python 3.9.9
 ```
 
 ### Step 1 - Init the workload
@@ -72,10 +66,10 @@ Init the **Bank** workload.
 
 ```bash
 # CockroachDB
-pgworkload init --workload=workloads/bank.py --concurrency=8 --init --url='postgres://localhost:26257/postgres?sslmode=disable'
+pgworkload init -w=workloads/bank.py -c=8 --url='postgres://localhost:26257/postgres?sslmode=disable'
 
 # PostgreSQL
-pgworkload init --workload=workloads/bank.py --concurrency=8 --init --url='postgres://localhost:5432/postgres?sslmode=disable'
+pgworkload init --w=workloads/bank.py -c=8 --url='postgres://localhost:5432/postgres?sslmode=disable'
 ```
 
 You should see something like below
@@ -99,10 +93,10 @@ Run the workload using 8 connections for 120 seconds or 100k cycles, whichever c
 
 ```bash
 # CockroachDB
-pgworkload run --workload=workloads/bank.py --concurrency=8 --args='{"lane": "wire", "read_pct": 50}' --url='postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank' --duration=120 --iterations=100000
+pgworkload run -w=workloads/bank.py -c=8 --url='postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank' -d=120 -i=100000
 
 # PostgreSQL
-pgworkload run --workload=workloads/bank.py --concurrency=8 --args='{"lane": "wire", "read_pct": 50}' --url='postgres://root@localhost:5432/bank?sslmode=disable&application_name=Bank' --duration=120 --iterations=100000
+pgworkload run -w=workloads/bank.py -c=8 --url='postgres://root@localhost:5432/bank?sslmode=disable&application_name=Bank' -d=120 -i=100000
 ```
 
 `pgworkload` uses exclusively the excellent [Psycopg 3](https://www.psycopg.org/psycopg3/docs/) to connect.
