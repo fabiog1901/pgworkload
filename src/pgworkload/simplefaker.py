@@ -17,9 +17,8 @@ class SimpleFaker:
     the NumPy random generator class.
     """
 
-    def __init__(self, seed: int = None, csv_max_rows: int = 1000000, compression: str = 'gzip'):
+    def __init__(self, seed: int = None, csv_max_rows: int = 1000000):
         self.csv_max_rows: int = csv_max_rows
-        self.compression: str = compression
         self.rng: np.random.Generator = np.random.default_rng(seed=seed)
 
     class Costant:
@@ -157,7 +156,7 @@ class SimpleFaker:
             self.min = 10 if min_num is None else max(min_num-9, 1)
             self.max = 50 if max_num is None else max(max_num-9, 2)
             super().__init__(min=self.min, max=self.max,
-                             null_pct=null_pct, bitgenerator=bitgenerator)
+                             null_pct=null_pct, bitgenerator=bitgenerator, array=0)
 
         def __next__(self):
             v = super().__next__()
@@ -324,7 +323,7 @@ class SimpleFaker:
             l.append(rows_to_process + rows_left_over)
             return l
 
-    def generate(self, load: dict, exec_threads: int, csv_dir: str, delimiter: str):
+    def generate(self, load: dict, exec_threads: int, csv_dir: str, delimiter: str, compression: str):
         """Generate the CSV datasets
 
         Args:
@@ -332,12 +331,13 @@ class SimpleFaker:
             exec_threads (int): count of processes for parallel execution
             csv_dir (str): destination directory for the CSV files
             delimiter (str): field delimiter
+            compression (str): the compression format (gzip, zip, None..)
         """
 
         for table_name, table_details in load.items():
             csv_file_basename = os.path.join(csv_dir, table_name)
 
-            logging.info(msg=f"Generating dataset for table '{table_name}'")
+            logging.info(f"Generating dataset for table '{table_name}'")
 
             for item in table_details:
                 col_names = list(item['tables'].keys())
@@ -347,26 +347,23 @@ class SimpleFaker:
                     item['tables'][col] = self.__get_simplefaker_objects(
                         col_details['type'], col_details['args'], item['count'], exec_threads)
 
-                    logging.debug(msg='Writing CSV files...')
+                # create a zip object so that generators are paired together
+                z = zip(*[x for x in item['tables'].values()])
 
-                    # create a zip object so that generators are paired together
-                    z = zip(*[x for x in item['tables'].values()])
+                rows_chunk = self.division_with_modulo(item['count'], exec_threads)
+                procs = []
+                for i, rows in enumerate(rows_chunk):
+                    output_file = csv_file_basename + '.' + \
+                        str(table_details.index(item)) + '_' + str(i)
 
-                    rows_chunk = self.division_with_modulo(
-                        item['count'], exec_threads)
-                    procs = []
-                    for i, rows in enumerate(rows_chunk):
-                        output_file = csv_file_basename + '.' + \
-                            str(table_details.index(item)) + '_' + str(i)
+                    p = mp.Process(target=self.worker, daemon=True, args=(
+                        next(z), rows, output_file, col_names, sort_by, delimiter, compression))
+                    p.start()
+                    procs.append(p)
 
-                        p = mp.Process(target=self.worker, daemon=True, args=(
-                            next(z), rows, output_file, col_names, sort_by, delimiter))
-                        p.start()
-                        procs.append(p)
-
-                    # wait for all workers to exit
-                    for p in procs:
-                        p.join()
+                # wait for all workers to exit
+                for p in procs:
+                    p.join()
 
     def __get_simplefaker_objects(self, type: str, args: dict, count: int, exec_threads: int):
         """Returns a list of SimpleFaker objects based on the number of execution threads.
@@ -445,7 +442,7 @@ class SimpleFaker:
             raise ValueError(
                 f"SimpleFaker type not implemented or recognized: '{type}'")
 
-    def worker(self, generators: tuple, iterations: int, basename: str, col_names: list, sort_by: list, separator: str):
+    def worker(self, generators: tuple, iterations: int, basename: str, col_names: list, sort_by: list, separator: str, compression: str):
         """Process worker function to generate the data in a multiprocessing env
 
         Args:
@@ -455,8 +452,9 @@ class SimpleFaker:
             col_names (list): the csv column names, used for sorting
             sort_by (list): the column to sort by
             separator (str): the field delimiter in the CSV file
+            compression (str): the compression format (gzip, zip, None..)
         """
-        logging.debug(msg="SimpleFaker worker created")
+        logging.debug("SimpleFaker worker created")
         if iterations > self.csv_max_rows:
             count = int(iterations/self.csv_max_rows)
             rem = iterations % self.csv_max_rows
@@ -465,23 +463,22 @@ class SimpleFaker:
             count = 1
             rem = 0
 
-        if self.compression == 'gzip':
+        if compression == 'gzip':
             suffix = '.csv.gz'
-        elif self.compression == 'zip':
+        elif compression == 'zip':
             suffix = '.csv.zip'
-        elif self.compression == None:
-            suffix = '.csv'
         else:
             suffix = '.csv'
-
+        
         for x in range(count):
             pd.DataFrame(
                 [row for row in [[next(x) for x in generators]
                                  for _ in range(iterations)]],
                 columns=col_names)\
                 .sort_values(by=sort_by)\
-                .to_csv(basename + '_' + str(x) + suffix, quoting=csv.QUOTE_NONE, sep=separator, header=False, index=False, compression=self.compression)
-
+                .to_csv(basename + '_' + str(x) + suffix, quoting=csv.QUOTE_NONE, sep=separator, header=False, index=False, compression=compression)
+            logging.debug(f"Saved file '{basename + '_' + str(x) + suffix}'")
+            
         # remaining rows, if any
         if rem > 0:
             pd.DataFrame(
@@ -489,4 +486,6 @@ class SimpleFaker:
                                  for _ in range(rem)]],
                 columns=col_names)\
                 .sort_values(by=sort_by)\
-                .to_csv(basename + '_' + str(count) + suffix, sep=separator, header=False, index=False, compression=self.compression)
+                .to_csv(basename + '_' + str(count) + suffix, sep=separator, header=False, index=False, compression=compression)
+
+            logging.debug(f"Saved file '{basename + '_' + str(x) + suffix}'")

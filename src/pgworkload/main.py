@@ -19,14 +19,16 @@ import yaml
 
 DEFAULT_SLEEP = 5
 
+
 def main():
     """This is the Entrypoint function
     """
     try:
         args.func(args)
-    except Exception as e:
-        logging.error(msg=e)
+    except AttributeError:
         args.parser.print_help()
+    except Exception as e:
+        logging.error(e)
 
 
 def setup_parser():
@@ -133,11 +135,49 @@ def setup_parser():
                                help="Number of concurrent threads/processes (default = 1)")
     root_util_csv.add_argument('-d', '--delimiter', default='\t', dest='delimiter',
                                help="The delimeter char to use for the CSV files. (default = '\\t')")
-    root_util_csv.add_argument('-c', '--compression', default='gzip', dest='compression',
-                               help="The compression format. (defaults = 'gzip')")
+    root_util_csv.add_argument('-c', '--compression', default='', dest='compression',
+                               help="The compression format. (defaults = '' (No compression))")
     root_util_csv.set_defaults(func=util_csv)
 
     return root.parse_args()
+
+
+def signal_handler(sig, frame):
+    """Handles Ctrl+C events gracefully, 
+    ensuring all running processes are closed rather than killed.
+
+    Args:
+        sig (_type_): 
+        frame (_type_): 
+    """
+    global stats
+    global concurrency
+    logging.info("KeyboardInterrupt signal detected. Stopping processes...")
+
+    # send the poison pill to each worker
+    for _ in range(concurrency):
+        kill_q.put(None)
+
+    # wait until all workers return
+    start = time.time()
+    c = 0
+    timeout = True
+    while c < concurrency and timeout:
+        try:
+            kill_q2.get(block=False)
+            c += 1
+        except:
+            pass
+
+        time.sleep(0.01)
+        timeout = time.time() < start + 5
+
+    if not timeout:
+        logging.info("Timeout reached - forcing processes to stop")
+
+    logging.info("Printing final stats")
+    stats.print_stats()
+    sys.exit(0)
 
 
 def init_pgworkload(args: argparse.Namespace):
@@ -149,26 +189,28 @@ def init_pgworkload(args: argparse.Namespace):
     Returns:
         argparse.Namespace: updated args
     """
-    logging.debug(msg="Initialazing pgworkload")
+    logging.debug("Initialazing pgworkload")
 
     global concurrency
     concurrency = args.concurrency
 
     if not re.search(r'.*://.*/(.*)\?', args.dburl):
-        logging.error(msg=
+        logging.error(
             "The connection string needs to point to a database. Example: postgres://root@localhost:26257/postgres?sslmode=disable")
         sys.exit(1)
 
     if not args.workload_path:
-        logging.error(msg="No workload argument was passed")
+        logging.error("No workload argument was passed")
+        print()
+        args.parser.print_help()
         sys.exit(1)
-        
-    workload = pgworkload.util.import_class_at_runtime(args.workload_path)
 
-    args.dburl = pgworkload.util.set_query_parameter(
-        args.dburl, "application_name", args.app_name if args.app_name else workload.__name__)
+    workload = pgworkload.util.import_class_at_runtime(path=args.workload_path)
 
-    logging.info(msg="URL: '%s'" % args.dburl)
+    args.dburl = pgworkload.util.set_query_parameter(url=args.dburl, param_name="application_name",
+                                                     param_value=args.app_name if args.app_name else workload.__name__)
+
+    logging.info(f"URL: '{args.dburl}'")
 
     # load args dict from file or string
     if os.path.exists(args.args):
@@ -177,8 +219,8 @@ def init_pgworkload(args: argparse.Namespace):
     else:
         args.args = yaml.safe_load(args.args)
         if isinstance(args.args, str):
-            logging.error(msg=
-                "The value passed to '--args' is not a valid JSON or a valid path to a JSON/YAML file: '%s'" % args.args)
+            logging.error(
+                f"The value passed to '--args' is not a valid JSON or a valid path to a JSON/YAML file: '{args.args}'")
             sys.exit(1)
 
     return args
@@ -190,12 +232,12 @@ def run(args: argparse.Namespace):
     Args:
         args (argparse.Namespace): the args passed at the CLI
     """
-    
+
     global stats
     args = init_pgworkload(args)
-    
+
     workload = pgworkload.util.import_class_at_runtime(path=args.workload_path)
-    
+
     signal.signal(signal.SIGINT, signal_handler)
 
     stats = pgworkload.util.Stats(frequency=args.frequency)
@@ -231,15 +273,15 @@ def run(args: argparse.Namespace):
 
             if c >= args.concurrency:
                 if isinstance(tup, psycopg.errors.UndefinedTable):
-                    logging.error(msg=tup)
-                    logging.error(msg=
+                    logging.error(tup)
+                    logging.error(
                         "The schema is not present. Did you initialize the workload?")
                     sys.exit(1)
                 elif isinstance(tup, Exception):
-                    logging.error(msg="Exception raised: %s" % tup)
+                    logging.error("Exception raised: %s" % tup)
                     sys.exit(1)
                 else:
-                    logging.info(msg=
+                    logging.info(
                         "Requested iteration/duration limit reached. Printing final stats")
                     stats.print_stats()
                     sys.exit(0)
@@ -250,7 +292,7 @@ def run(args: argparse.Namespace):
                 stat_time = time.time() + args.frequency
 
     except Exception as e:
-        logging.error(msg=e)
+        logging.error(e)
 
 
 def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str,
@@ -268,7 +310,7 @@ def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str,
         duration (int): seconds before returning
         conn_duration (int): seconds before restarting the database connection
     """
-    logging.debug(msg="Worker created")
+    logging.debug("Worker created")
     # capture KeyboardInterrupt and do nothing
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
@@ -294,20 +336,20 @@ def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str,
         # listen for termination messages (poison pill)
         try:
             kill_q.get(block=False)
-            logging.debug(msg="Poison pill received")
+            logging.debug("Poison pill received")
             kill_q2.put(None)
             return
         except queue.Empty:
             pass
         try:
             with psycopg.connect(dburl, autocommit=True) as conn:
-                logging.debug(msg="Connection started")
+                logging.debug("Connection started")
                 while True:
 
                     # listen for termination messages (poison pill)
                     try:
                         kill_q.get(block=False)
-                        logging.debug(msg="Poison pill received")
+                        logging.debug("Poison pill received")
                         kill_q2.put(None)
                         return
                     except queue.Empty:
@@ -316,7 +358,7 @@ def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str,
                     # return if the limits of either iteration count and duration have been reached
                     if (iterations > 0 and c >= iterations) or \
                             (duration > 0 and time.time() >= endtime):
-                        logging.debug(msg="Task completed!")
+                        logging.debug("Task completed!")
 
                         # send task completed notification (a None)
                         q.put(None)
@@ -325,7 +367,7 @@ def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str,
                     # break from the inner loop if limit for connection duration has been reached
                     # this will cause for the outer loop to reset the timer and restart with a new conn
                     if conn_duration > 0 and time.time() >= conn_endtime:
-                        logging.debug(msg=
+                        logging.debug(
                             "conn_duration reached, will reset the connection.")
                         break
 
@@ -343,12 +385,18 @@ def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str,
         except psycopg.errors.UndefinedTable as e:
             q.put(e)
             return
+        # psycopg.OperationalErrors can either mean a disconnection
+        # or some other errors.
+        # We don't stop if a node goes doesn, instead, wait few seconds and attempt
+        # a new connection.
+        # If the error is not beacuse of a disconnection, then unfortunately 
+        # the worker will continue forever
         except psycopg.Error as e:
-            logging.error(msg=f'{e.__class__.__name__} {e}')
-            logging.info(msg="Sleeping for %s seconds" % (DEFAULT_SLEEP))
+            logging.error(f'{e.__class__.__name__} {e}')
+            logging.info("Sleeping for %s seconds" % (DEFAULT_SLEEP))
             time.sleep(DEFAULT_SLEEP)
         except Exception as e:
-            logging.error(msg="Exception: %s" % (e))
+            logging.error("Exception: %s" % (e))
             q.put(e)
             return
 
@@ -363,7 +411,7 @@ def init(args: argparse.Namespace):
     Args:
         args (argparse.Namespace): the args passed at the CLI
     """
-    logging.debug(msg="Running init")
+    logging.debug("Running init")
 
     args = init_pgworkload(args)
 
@@ -375,50 +423,49 @@ def init(args: argparse.Namespace):
     try:
         dbms: str = pgworkload.util.get_dbms(args.dburl)
     except ValueError as e:
-        logging.error(msg=e)
+        logging.error(e)
         sys.exit(1)
     except Exception as e:
-        logging.error(msg=e)
+        logging.error(e)
         dbms: str = None
 
     # PART 1 - CREATE THE SCHEMA
     if args.skip_schema:
-        logging.debug(msg="Skipping init_create_schema")
+        logging.debug("Skipping init_create_schema")
     else:
         __init_create_schema(args.dburl,
-                           args.drop, args.db, args.workload_path, dbms)
+                             args.drop, args.db, args.workload_path, dbms)
 
     # PART 2 - GENERATE THE DATA
     if args.skip_gen:
-        logging.debug(msg="Skipping init_generate_data")
+        logging.debug("Skipping init_generate_data")
     else:
-        __init_generate_data(args.concurrency,
-                           args.workload_path, dbms,
-                           args.http_server_hostname, args.http_server_port)
+        __init_generate_data(args.concurrency, args.workload_path, dbms)
 
     # PART 3 - IMPORT THE DATA
     dburl = pgworkload.util.get_new_dburl(args.dburl, args.db)
     if args.skip_import:
-        logging.debug(msg="Skipping init_import_data")
+        logging.debug("Skipping init_import_data")
     else:
         if not args.http_server_hostname:
             args.http_server_hostname = pgworkload.util.get_hostname()
-            logging.debug(msg=f"Hostname identified as: '{args.http_server_hostname}'")
+            logging.debug(
+                f"Hostname identified as: '{args.http_server_hostname}'")
 
-        __init_import_data(workload, dburl, args.workload_path, dbms,
-                         args.http_server_hostname, args.http_server_port)
+        __init_import_data(dburl, args.workload_path, dbms,
+                           args.http_server_hostname, args.http_server_port)
 
     # PART 4 - RUN WORKLOAD INIT
-    logging.debug(msg="Running workload.init()")
+    logging.debug("Running workload.init()")
     workload = pgworkload.util.import_class_at_runtime(args.workload_path)
     try:
         with psycopg.connect(dburl, autocommit=True) as conn:
             workload(args.args).init(conn)
     except Exception as e:
-        logging.error(msg=e)
+        logging.error(e)
         sys.exit(1)
 
-    logging.info(msg=
+    logging.info(
         "Init completed. Please update your database connection url to '%s'" % dburl)
 
 
@@ -435,12 +482,12 @@ def __init_create_schema(dburl: str, drop: bool, db_name: str, workload_path: st
     # create the database according to the value passed in --init-db,
     # or use the workload name otherwise.
     # drop any existant database if --init-drop is True
-    logging.debug(msg="Running init_create_schema")
+    logging.debug("Running init_create_schema")
     try:
         with psycopg.connect(dburl, autocommit=True) as conn:
             with conn.cursor() as cur:
                 if drop:
-                    logging.debug(msg="Dropping database '%s'" % db_name)
+                    logging.debug("Dropping database '%s'" % db_name)
                     if dbms == "CockroachDB":
                         cur.execute(psycopg.sql.SQL("DROP DATABASE IF EXISTS {} CASCADE;").format(
                             psycopg.sql.Identifier(db_name)))
@@ -448,20 +495,20 @@ def __init_create_schema(dburl: str, drop: bool, db_name: str, workload_path: st
                         cur.execute(psycopg.sql.SQL("DROP DATABASE IF EXISTS {};").format(
                             psycopg.sql.Identifier(db_name)))
                     else:
-                        logging.error(msg="DBMS not supported {dbms}")
+                        logging.error("DBMS not supported {dbms}")
                         sys.exit(1)
-                        
+
                 # determine if database exists already
                 # postgresql does not support CREATE DATABASE IF NOT EXISTS
                 if cur.execute('SELECT 1 FROM pg_database WHERE datname = %s;', (db_name, )).fetchone() is None:
-                    logging.debug(msg="Creating database '%s'" % db_name)
+                    logging.debug("Creating database '%s'" % db_name)
                     cur.execute(psycopg.sql.SQL("CREATE DATABASE {};").format(
                         psycopg.sql.Identifier(db_name)))
 
-                logging.info(msg="Database '%s' created." % db_name)
+                logging.info("Database '%s' created." % db_name)
 
     except Exception as e:
-        logging.error(msg="Exception: %s" % (e))
+        logging.error("Exception: %s" % (e))
         sys.exit(1)
 
     dburl = pgworkload.util.get_new_dburl(dburl, db_name)
@@ -471,30 +518,33 @@ def __init_create_schema(dburl: str, drop: bool, db_name: str, workload_path: st
     # or in the self.schema variable of the workload.
 
     # find if the .sql file exists
-    schema_sql_file = os.path.abspath(pgworkload.util.get_based_name_dir(workload_path) + '.sql')
+    schema_sql_file = os.path.abspath(
+        pgworkload.util.get_based_name_dir(workload_path) + '.sql')
 
     if os.path.exists(path=schema_sql_file):
-        logging.debug(msg='Found schema SQL file %s' % schema_sql_file)
+        logging.debug('Found schema SQL file %s' % schema_sql_file)
         with open(schema_sql_file, 'r') as f:
             schema = f.read()
     else:
-        logging.debug(msg=
+        logging.debug(
             f'Schema file {schema_sql_file} not found. Loading schema from the \'schema\' variable')
         try:
-            workload = pgworkload.util.import_class_at_runtime(path=workload_path)
+            workload = pgworkload.util.import_class_at_runtime(
+                path=workload_path)
             schema = workload({}).schema
         except AttributeError as e:
-            logging.error(msg=f'{e}. Make sure self.schema is a valid variable in __init__')
+            logging.error(
+                f'{e}. Make sure self.schema is a valid variable in __init__')
             sys.exit(1)
     try:
         with psycopg.connect(conninfo=dburl, autocommit=True) as conn:
             with conn.cursor() as cur:
                 cur.execute(query=psycopg.sql.SQL(schema))
 
-            logging.info(msg='Created workload schema')
+            logging.info('Created workload schema')
 
     except Exception as e:
-        logging.error(msg=f'Exception: {e}')
+        logging.error(f'Exception: {e}')
         sys.exit(1)
 
 
@@ -507,12 +557,12 @@ def __init_generate_data(exec_threads: int, workload_path: str, dbms: str):
         workload_path (str): filepath to the workload class
         dbms (str): DBMS technology (CockroachDB, PostgreSQL, etc..)
     """
-    logging.debug(msg="Running init_generate_data")
+    logging.debug("Running init_generate_data")
     # description of how to generate the data is in workload variable self.load
 
     load = pgworkload.util.get_workload_load(workload_path)
     if not load:
-        logging.info(msg=
+        logging.info(
             "Data generation definition file (.yaml) or variable (self.load) not defined. Skipping")
         return
 
@@ -531,12 +581,15 @@ def __init_generate_data(exec_threads: int, workload_path: str, dbms: str):
     compression = 'gzip' if dbms == "CockroachDB" else None
 
     # generate the data by parsing the load variable
-    pgworkload.simplefaker.SimpleFaker(compression=compression, seed=0).generate(
-        load, exec_threads, csv_dir, '\t')
+    pgworkload.simplefaker.SimpleFaker(seed=0).generate(load=load,
+                                                        exec_threads=exec_threads,
+                                                        csv_dir=csv_dir,
+                                                        delimiter='\t',
+                                                        compression=compression)
 
 
 def __init_import_data(dburl: str, workload_path: str, dbms:
-                     str, http_server_hostname: str, http_server_port: str):
+                       str, http_server_hostname: str, http_server_port: str):
     """Import the datasets CSV files into the database
 
     Args:
@@ -546,7 +599,7 @@ def __init_import_data(dburl: str, workload_path: str, dbms:
         http_server_hostname (str): The hostname of the server that serves the CSV files
         http_server_port (str): The port of the server that serves the CSV files
     """
-    logging.debug(msg="Running init_import_data")
+    logging.debug("Running init_import_data")
 
     csv_dir = pgworkload.util.get_based_name_dir(workload_path)
     load = pgworkload.util.get_workload_load(workload_path)
@@ -568,7 +621,7 @@ def __init_import_data(dburl: str, workload_path: str, dbms:
                     node_count = cur.fetchone()[0]
 
                 for table in load.keys():
-                    logging.info(msg="Importing data for table '%s'" % table)
+                    logging.info("Importing data for table '%s'" % table)
                     table_csv_files = [
                         x for x in csv_files if x.split('.')[0] == table]
 
@@ -592,13 +645,13 @@ def __init_import_data(dburl: str, workload_path: str, dbms:
                             stmt = "COPY %s FROM '%s';" % (
                                 table, os.path.join(os.getcwd(), chunk[0]))
                         else:
-                            logging.warning(msg=f'DBMS not supported: {dbms}')
+                            logging.warning(f'DBMS not supported: {dbms}')
                             pass
-                        
-                        logging.debug(msg=f'Importing files: {chunk}')
+
+                        logging.debug(f'Importing files: {chunk}')
                         cur.execute(stmt)
     except Exception as e:
-        logging.error(msg=f'Exception: {e}')
+        logging.error(f'Exception: {e}')
         sys.exit(1)
 
 
@@ -609,6 +662,12 @@ def util_csv(args: argparse.Namespace):
     Args:
         args (argparse.Namespace): args passed at the CLI
     """
+    if not args.input:
+        logging.error("No input argument was passed")
+        print()
+        args.parser.print_help()
+        sys.exit(1)
+
     with open(args.input, 'r') as f:
         load = yaml.safe_load(f.read())
 
@@ -629,8 +688,11 @@ def util_csv(args: argparse.Namespace):
     # create new directory
     os.mkdir(output_dir)
 
-    pgworkload.simplefaker.SimpleFaker(compression=args.compression).generate(
-        load, args.threads, output_dir,  args.delimiter)
+    if not args.compression:
+        args.compression = None
+
+    pgworkload.simplefaker.SimpleFaker().generate(
+        load, args.threads, output_dir,  args.delimiter, args.compression)
 
 
 def util_yaml(args: argparse.Namespace):
@@ -641,6 +703,12 @@ def util_yaml(args: argparse.Namespace):
     Args:
         args (argparse.Namespace): args passed at the CLI
     """
+    if not args.input:
+        logging.error("No input argument was passed")
+        print()
+        args.parser.print_help()
+        sys.exit(1)
+
     with open(args.input, 'r') as f:
         ddl = f.read()
 
@@ -657,44 +725,6 @@ def util_yaml(args: argparse.Namespace):
     # create new directory
     with open(output, 'w') as f:
         f.write(pgworkload.util.ddl_to_yaml(ddl))
-
-
-def signal_handler(sig, frame):
-    """Handles Ctrl+C events gracefully, 
-    ensuring all running processes are closed rather than killed.
-
-    Args:
-        sig (_type_): 
-        frame (_type_): 
-    """
-    global stats
-    global concurrency
-    logging.info(msg="KeyboardInterrupt signal detected. Stopping processes...")
-
-    # send the poison pill to each worker
-    for _ in range(concurrency):
-        kill_q.put(None)
-
-    # wait until all workers return
-    start = time.time()
-    c = 0
-    timeout = True
-    while c < concurrency and timeout:
-        try:
-            kill_q2.get(block=False)
-            c += 1
-        except:
-            pass
-
-        time.sleep(0.01)
-        timeout = time.time() < start + 5
-
-    if not timeout:
-        logging.info(msg="Timeout reached - forcing processes to stop")
-
-    logging.info(msg="Printing final stats")
-    stats.print_stats()
-    sys.exit(0)
 
 
 args: argparse.Namespace = setup_parser()
