@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS ref_data (
     -- my_bytes BYTES,
     my_string VARCHAR [],
     my_bool BOOL,
-    my_json BOOL
+    my_json JSONB
 );
 
 CREATE TABLE IF NOT EXISTS transactions (
