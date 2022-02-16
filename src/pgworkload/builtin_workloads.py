@@ -5,7 +5,7 @@ import psycopg
 class Querybench():
     """Querybench runs the passed SQL statements
     sequentially and iteratively.
-    
+
     The workload assumes the schema and data is pre-loaded.
     """
 
@@ -23,7 +23,7 @@ class Querybench():
 
     def init(self, conn: psycopg.Connection):
         pass
-            
+
     def run(self):
         return [self.txn for _ in self.stmts]
 
@@ -69,7 +69,7 @@ credits:
 
     def init(self, conn: psycopg.Connection):
         pass
-            
+
     def run(self):
         return []
 
