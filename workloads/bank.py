@@ -32,7 +32,7 @@ class Bank:
         self.load: str = """ 
 # This has to be a YAML string so 
 # it's important it starts with no indentation
-# it's easier however, to pass a .yaml file instead
+# it's easier however, to pass a .yaml file instead 
 credits:
   - count: 2000
     sort-by:
