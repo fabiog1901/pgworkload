@@ -62,8 +62,8 @@ def setup_parser():
                                  help="The connection string to the database. (default = 'postgres://root@localhost:26257/postgres?sslmode=disable')")
     workload_parser.add_argument('-a', '--app-name', dest='app_name',
                                  help='The application name specified by the client, if any. (default = <db name>)')
-    workload_parser.add_argument('-c', "--concurrency", dest="concurrency",
-                                 help="Number of concurrent workers (default = 1)", default=1, type=int)
+    workload_parser.add_argument('-c', "--concurrency", dest="concurrency", default = '',
+                                 help="Number of concurrent workers (default = <cpu_count>)", default=1, type=int)
 
     # root -> init
     root_init = root_sub.add_parser('init', help='Init commands',
@@ -133,8 +133,8 @@ def setup_parser():
                                help='Filepath to the YAML data generation file')
     root_util_csv.add_argument('-o', '--output', dest='output', type=str, default='',
                                help='Output directory for the CSV files. (default = <input-basename>)')
-    root_util_csv.add_argument('-t', '--threads', dest="threads", default=1, type=int,
-                               help="Number of concurrent threads/processes (default = 1)")
+    root_util_csv.add_argument('-t', '--threads', dest="threads", default='',
+                               help="Number of concurrent threads/processes (default = <cpu_count>)")
     root_util_csv.add_argument('-d', '--delimiter', default='\t', dest='delimiter',
                                help="The delimeter char to use for the CSV files. (default = '\\t')")
     root_util_csv.add_argument('-c', '--compression', default='', dest='compression',
@@ -194,7 +194,11 @@ def init_pgworkload(args: argparse.Namespace):
     logging.debug("Initialazing pgworkload")
 
     global concurrency
-    concurrency = args.concurrency
+    
+    if not args.concurrency:
+        args.concurrency = os.cpu_count()
+    
+    concurrency = int(args.concurrency)
 
     if not re.search(r'.*://.*/(.*)\?', args.dburl):
         logging.error(
@@ -245,7 +249,7 @@ def run(args: argparse.Namespace):
     stats = pgworkload.util.Stats(frequency=args.frequency, prom_port=args.prom_port)
 
     if args.iterations > 0:
-        args.iterations = int(args.iterations / args.concurrency)
+        args.iterations = int(args.iterations / concurrency)
 
     global kill_q
     global kill_q2
@@ -256,7 +260,7 @@ def run(args: argparse.Namespace):
 
     c = 0
 
-    for _ in range(args.concurrency):
+    for _ in range(concurrency):
         mp.Process(target=worker, daemon=True, args=(
             q, kill_q, kill_q2, args.dburl, workload, args.args, args.iterations, args.duration, args.conn_duration)).start()
 
@@ -273,7 +277,7 @@ def run(args: argparse.Namespace):
             except queue.Empty:
                 pass
 
-            if c >= args.concurrency:
+            if c >= concurrency:
                 if isinstance(tup, psycopg.errors.UndefinedTable):
                     logging.error(tup)
                     logging.error(
@@ -442,7 +446,7 @@ def init(args: argparse.Namespace):
     if args.skip_gen:
         logging.debug("Skipping init_generate_data")
     else:
-        __init_generate_data(args.concurrency, args.workload_path, dbms)
+        __init_generate_data(concurrency, args.workload_path, dbms)
 
     # PART 3 - IMPORT THE DATA
     dburl = pgworkload.util.get_new_dburl(args.dburl, args.db)
@@ -693,8 +697,11 @@ def util_csv(args: argparse.Namespace):
     if not args.compression:
         args.compression = None
 
+    if not args.threads:
+        args.threads = os.cpu_count()
+        
     pgworkload.simplefaker.SimpleFaker().generate(
-        load, args.threads, output_dir,  args.delimiter, args.compression)
+        load, int(args.threads), output_dir,  args.delimiter, args.compression)
 
 
 def util_yaml(args: argparse.Namespace):
