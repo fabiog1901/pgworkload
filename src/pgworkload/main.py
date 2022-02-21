@@ -62,8 +62,8 @@ def setup_parser():
                                  help="The connection string to the database. (default = 'postgres://root@localhost:26257/postgres?sslmode=disable')")
     workload_parser.add_argument('-a', '--app-name', dest='app_name',
                                  help='The application name specified by the client, if any. (default = <db name>)')
-    workload_parser.add_argument('-c', "--concurrency", dest="concurrency", default = '',
-                                 help="Number of concurrent workers (default = <cpu_count>)", default=1, type=int)
+    workload_parser.add_argument('-c', "--concurrency", dest="concurrency", default='',
+                                 help="Number of concurrent workers (default = <cpu_count>)")
 
     # root -> init
     root_init = root_sub.add_parser('init', help='Init commands',
@@ -101,7 +101,7 @@ def setup_parser():
     root_run.add_argument('-d', '--duration', dest="duration", default=0, type=int,
                           help="Duration in seconds. (default = 0 --> ad infinitum)")
     root_run.add_argument('-p', '--port', dest='prom_port', default='26260', type=int,
-                           help="The port of the Prometheus server. (defaults = 26260)")
+                          help="The port of the Prometheus server. (defaults = 26260)")
     root_run.set_defaults(parser=root_run)
     root_run.set_defaults(func=run)
 
@@ -194,10 +194,10 @@ def init_pgworkload(args: argparse.Namespace):
     logging.debug("Initialazing pgworkload")
 
     global concurrency
-    
+
     if not args.concurrency:
         args.concurrency = os.cpu_count()
-    
+
     concurrency = int(args.concurrency)
 
     if not re.search(r'.*://.*/(.*)\?', args.dburl):
@@ -246,7 +246,8 @@ def run(args: argparse.Namespace):
 
     signal.signal(signal.SIGINT, signal_handler)
 
-    stats = pgworkload.util.Stats(frequency=args.frequency, prom_port=args.prom_port)
+    stats = pgworkload.util.Stats(
+        frequency=args.frequency, prom_port=args.prom_port)
 
     if args.iterations > 0:
         args.iterations = int(args.iterations / concurrency)
@@ -395,7 +396,7 @@ def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str,
         # or some other errors.
         # We don't stop if a node goes doesn, instead, wait few seconds and attempt
         # a new connection.
-        # If the error is not beacuse of a disconnection, then unfortunately 
+        # If the error is not beacuse of a disconnection, then unfortunately
         # the worker will continue forever
         except psycopg.Error as e:
             logging.error(f'{e.__class__.__name__} {e}')
@@ -699,7 +700,7 @@ def util_csv(args: argparse.Namespace):
 
     if not args.threads:
         args.threads = os.cpu_count()
-        
+
     pgworkload.simplefaker.SimpleFaker().generate(
         load, int(args.threads), output_dir,  args.delimiter, args.compression)
 
