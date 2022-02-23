@@ -1,5 +1,5 @@
 ref_data:
-  - count: 10000000
+  - count: 100000
     sort-by:
       - my_sequence
     tables:
