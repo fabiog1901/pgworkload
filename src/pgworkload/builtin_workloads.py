@@ -2,7 +2,7 @@ import itertools
 import psycopg
 
 
-class Querybench():
+class Querybench:
     """Querybench runs the passed SQL statements
     sequentially and iteratively.
 

@@ -10,7 +10,7 @@ import random
 
 class SimpleFaker:
     """Pseudo-random data generator based on 
-    the NumPy random generator class.
+    the random.Random class.
     """
 
     def __init__(self, seed: float = None, csv_max_rows: int = 100000):
