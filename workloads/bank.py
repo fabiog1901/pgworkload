@@ -69,7 +69,7 @@ credits:
     def read(self, conn: psycopg.Connection):
         with conn.cursor() as cur:
             cur.execute(
-                "select * from transactions lane = %s and id = %s", (self.lane, self.uuid))
+                "select * from transactions where lane = %s and id = %s", (self.lane, self.uuid))
             cur.fetchone()
 
     def txn1_new(self, conn: psycopg.Connection):
