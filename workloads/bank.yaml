@@ -43,8 +43,8 @@ ref_data:
       my_integer:
         type: integer
         args:
-          start: 1000000
-          end: 10000000
+          start: 10000
+          end: 100000
           seed: 0
           null_pct: 0.2
           array: 0
