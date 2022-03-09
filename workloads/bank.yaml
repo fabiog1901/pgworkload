@@ -51,7 +51,7 @@ ref_data:
       my_float:
         type: float
         args:
-          max: 10000000
+          max: 100000
           round: 2
           seed: 0
           null_pct: 0.1
