@@ -43,15 +43,15 @@ ref_data:
       my_integer:
         type: integer
         args:
-          start: 1000000
-          end: 10000000
+          start: 10000
+          end: 100000
           seed: 0
           null_pct: 0.2
           array: 0
       my_float:
         type: float
         args:
-          max: 10000000
+          max: 10000
           round: 2
           seed: 0
           null_pct: 0.1

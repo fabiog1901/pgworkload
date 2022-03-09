@@ -322,7 +322,7 @@ def ddl_to_yaml(ddl: str):
         if datatype.lower() in ['bool', 'boolean']:
             return {'type': 'bool',
                     'args': {
-                        'seed': 0,
+                        'seed': random.random(),
                         'null_pct': 0.0,
                         'array': DEFAULT_ARRAY_COUNT if is_array else 0}
                     }
@@ -332,7 +332,7 @@ def ddl_to_yaml(ddl: str):
                     'args': {
                         'min': 0,
                         'max':  1000000,
-                        'seed': 0,
+                        'seed': random.random(),
                         'null_pct': 0.0,
                         'array': DEFAULT_ARRAY_COUNT if is_array else 0}
                     }
@@ -342,7 +342,7 @@ def ddl_to_yaml(ddl: str):
                     'args': {
                         'min': 10,
                         'max': 30,
-                        'seed': 0,
+                        'seed': random.random(),
                         'null_pct': 0.0,
                         'array': DEFAULT_ARRAY_COUNT if is_array else 0}
                     }
@@ -352,7 +352,7 @@ def ddl_to_yaml(ddl: str):
                     'args': {
                         'max': 10000,
                         'round': 2,
-                        'seed': 0,
+                        'seed': random.random(),
                         'null_pct': 0.0,
                         'array': DEFAULT_ARRAY_COUNT if is_array else 0}
                     }
@@ -363,7 +363,7 @@ def ddl_to_yaml(ddl: str):
                         'start': '07:30:00',
                         'end': '15:30:00',
                         'micros': False,
-                        'seed': 0,
+                        'seed': random.random(),
                         'null_pct': 0.0,
                         'array': DEFAULT_ARRAY_COUNT if is_array else 0}
                     }
@@ -373,7 +373,7 @@ def ddl_to_yaml(ddl: str):
                     'args': {
                         'min': 10,
                         'max': 50,
-                        'seed': 0,
+                        'seed': random.random(),
                         'null_pct': 0.0}
                     }
 
@@ -383,7 +383,7 @@ def ddl_to_yaml(ddl: str):
                         'start': '2022-01-01',
                         'end': '2022-12-31',
                         'format': '%Y-%m-%d',
-                        'seed': 0,
+                        'seed': random.random(),
                         'null_pct': 0.0,
                         'array': DEFAULT_ARRAY_COUNT if is_array else 0}
                     }
@@ -394,7 +394,7 @@ def ddl_to_yaml(ddl: str):
                         'start': '2022-01-01',
                         'end': '2022-12-31',
                         'format': '%Y-%m-%d %H:%M:%S.%f',
-                        'seed': 0,
+                        'seed': random.random(),
                         'null_pct': 0.0,
                         'array': DEFAULT_ARRAY_COUNT if is_array else 0}
                     }
@@ -402,7 +402,7 @@ def ddl_to_yaml(ddl: str):
         elif datatype.lower() == 'uuid':
             return {'type': 'UUIDv4',
                     'args': {
-                        'seed': 0,
+                        'seed': random.random(),
                         'null_pct': 0,
                         'array': DEFAULT_ARRAY_COUNT if is_array else 0}
                     }
