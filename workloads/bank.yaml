@@ -2,7 +2,7 @@ ref_data:
   - count: 100000
     sort-by:
       - my_sequence
-    tables:
+    columns:
       my_sequence:
         type: sequence
         args: 

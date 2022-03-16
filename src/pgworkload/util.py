@@ -457,10 +457,10 @@ def ddl_to_yaml(ddl: str):
         table_list = []
         table_list.append({'count': count})
         table_list[0]['sort-by'] = sort_by
-        table_list[0]['tables'] = {}
+        table_list[0]['columns'] = {}
 
         for x in ll:
-            table_list[0]['tables'][x[0]] = get_type_and_args(x[1:])
+            table_list[0]['columns'][x[0]] = get_type_and_args(x[1:])
 
         return table_name, table_list
 
