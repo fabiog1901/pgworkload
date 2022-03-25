@@ -2,7 +2,7 @@ ref_data:
   - count: 100000
     sort-by:
       - my_sequence
-    tables:
+    columns:
       my_sequence:
         type: sequence
         args: 
@@ -51,6 +51,7 @@ ref_data:
       my_float:
         type: float
         args:
+          max: 10000
           max: 100000
           round: 2
           seed: 0

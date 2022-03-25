@@ -101,7 +101,9 @@ def setup_parser():
     root_run.add_argument('-d', '--duration', dest="duration", default=0, type=int,
                           help="Duration in seconds. (default = 0 --> ad infinitum)")
     root_run.add_argument('-p', '--port', dest='prom_port', default='26260', type=int,
-                          help="The port of the Prometheus server. (defaults = 26260)")
+                          help="The port of the Prometheus server. (default = 26260)")
+    root_init.add_argument('--autocommit', default=True, dest='autocommit', action='store_true',
+                           help="Configure the psycopg Connection with autocommit. (default = True)")
     root_run.set_defaults(parser=root_run)
     root_run.set_defaults(func=run)
 
@@ -263,7 +265,7 @@ def run(args: argparse.Namespace):
 
     for _ in range(concurrency):
         mp.Process(target=worker, daemon=True, args=(
-            q, kill_q, kill_q2, args.dburl, workload, args.args, args.iterations, args.duration, args.conn_duration)).start()
+            q, kill_q, kill_q2, args.dburl, args.autocommit, workload, args.args, args.iterations, args.duration, args.conn_duration)).start()
 
     try:
         stat_time = time.time() + args.frequency
@@ -302,7 +304,7 @@ def run(args: argparse.Namespace):
         logging.error(e)
 
 
-def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str,
+def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str, autocommit: bool,
            workload: object, args: dict, iterations: int, duration: int, conn_duration: int):
     """Process worker function to run the workload in a multiprocessing env
 
@@ -349,7 +351,7 @@ def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str,
         except queue.Empty:
             pass
         try:
-            with psycopg.connect(dburl, autocommit=True) as conn:
+            with psycopg.connect(dburl, autocommit=autocommit) as conn:
                 logging.debug("Connection started")
                 while True:
 

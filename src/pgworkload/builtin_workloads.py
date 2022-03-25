@@ -60,7 +60,7 @@ credits:
   - count: 2000
     sort-by:
       - id
-    tables:
+    columns:
       id:
         type: UUIDv4
         args:

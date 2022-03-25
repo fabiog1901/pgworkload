@@ -269,15 +269,15 @@ class SimpleFaker:
             logging.info(f"Generating dataset for table '{table_name}'")
 
             for item in table_details:
-                col_names = list(item['tables'].keys())
+                col_names = list(item['columns'].keys())
                 sort_by = item.get('sort-by', [])
-                for col, col_details in item['tables'].items():
+                for col, col_details in item['columns'].items():
                     # get the list of simplefaker objects with different seeds
-                    item['tables'][col] = self.__get_simplefaker_objects(
+                    item['columns'][col] = self.__get_simplefaker_objects(
                         col_details['type'], col_details['args'], item['count'], exec_threads)
 
                 # create a zip object so that generators are paired together
-                z = zip(*[x for x in item['tables'].values()])
+                z = zip(*[x for x in item['columns'].values()])
 
                 rows_chunk = self.division_with_modulo(
                     item['count'], exec_threads)
