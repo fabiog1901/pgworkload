@@ -102,7 +102,7 @@ def setup_parser():
                           help="Duration in seconds. (default = 0 --> ad infinitum)")
     root_run.add_argument('-p', '--port', dest='prom_port', default='26260', type=int,
                           help="The port of the Prometheus server. (default = 26260)")
-    root_init.add_argument('--autocommit', default=True, dest='autocommit', action='store_true',
+    root_run.add_argument('--no-autocommit', default=True, dest='autocommit', action='store_false',
                            help="Configure the psycopg Connection with autocommit. (default = True)")
     root_run.set_defaults(parser=root_run)
     root_run.set_defaults(func=run)
