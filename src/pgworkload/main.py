@@ -16,6 +16,7 @@ import sys
 import time
 import traceback
 import yaml
+import json
 
 DEFAULT_SLEEP = 5
 
@@ -223,14 +224,19 @@ def init_pgworkload(args: argparse.Namespace):
     # load args dict from file or string
     if os.path.exists(args.args):
         with open(args.args, 'r') as f:
-            args.args = yaml.safe_load(f)
+            args.args = f.read()
+            # parse into JSON if it's a JSON string
+            try:
+                args.args = json.load(args.args)
+            except Exception as e:
+                pass
     else:
         args.args = yaml.safe_load(args.args)
         if isinstance(args.args, str):
             logging.error(
                 f"The value passed to '--args' is not a valid JSON or a valid path to a JSON/YAML file: '{args.args}'")
             sys.exit(1)
-
+            
     return args
 
 

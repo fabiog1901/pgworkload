@@ -1,4 +1,5 @@
 import itertools
+from multiprocessing.sharedctypes import Value
 import psycopg
 
 
@@ -10,12 +11,18 @@ class Querybench:
     """
 
     def __init__(self, args: str):
-
+        
         # organize all SQL stmts in individual strings
-        self.stmts: list = [x for x in
-                            [x.strip() for x in args.split(';')]
-                            if x != '' and not x.startswith('--')]
-
+        if not args or not isinstance(args, str):
+            raise ValueError("Parameter 'args' is empty or invalid.")
+        
+        # cleaning the input
+        l: list = [x.strip() for x in args.split('\n')]
+        l: list = ' '.join([x for x in l if x != '' and not x.startswith('--')])
+        
+        self.stmts: list = [x.strip() for x in l[:-1].split(';')]
+    
+        # print(self.stmts)
         # create a continuous cycle from the parameters
         self.stmts_cycle = itertools.cycle(self.stmts)
         self.schema = ''
