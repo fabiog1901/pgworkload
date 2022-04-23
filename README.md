@@ -136,7 +136,7 @@ pgworkload -h
 
 ## Concurrency - processes and threads
 
-pgworkload uses both the `multiprocessing` and `threading` library to achieve high concurrency, that is, opening multiple connection to the DBMS.
+pgworkload uses both the `multiprocessing` and `threading` library to achieve high concurrency, that is, opening multiple connections to the DBMS.
 
 There are 2 parameters that can be used to configure how many processes you want to create, and for each process, how many threads:
 
@@ -147,10 +147,10 @@ pgworkload will spread the load across the processes, so that each process has a
 
 Example: if we set `--procs 4` and `--concurrency 10`, pgworkload will create as follows:
 
-Process-1: MainThread + 2 extra threads. Total = 3
-Process-2: MainThread + 2 extra threads. Total = 3
-Process-3: MainThread + 1 extra thread.  Total = 2
-Process-3: MainThread + 1 extra thread.  Total = 2
+- Process-1: MainThread + 2 extra threads. Total = 3
+- Process-2: MainThread + 2 extra threads. Total = 3
+- Process-3: MainThread + 1 extra thread.  Total = 2
+- Process-3: MainThread + 1 extra thread.  Total = 2
 
 Total workloads = 10
 
@@ -173,8 +173,9 @@ select 1;
 select 
   version();
 -- select now();
-SELECT * 
-FROM my_table 
+
+-- Query 2
+SELECT * FROM my_table 
 WHERE id = 1234;
 ```
 
