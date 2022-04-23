@@ -2,6 +2,7 @@
 
 import argparse
 import datetime as dt
+import json
 import logging
 import multiprocessing as mp
 import os
@@ -13,10 +14,10 @@ import random
 import re
 import signal
 import sys
+import threading
 import time
 import traceback
 import yaml
-import json
 
 DEFAULT_SLEEP = 5
 
@@ -63,8 +64,10 @@ def setup_parser():
                                  help="The connection string to the database. (default = 'postgres://root@localhost:26257/postgres?sslmode=disable')")
     workload_parser.add_argument('-a', '--app-name', dest='app_name',
                                  help='The application name specified by the client, if any. (default = <db name>)')
-    workload_parser.add_argument('-c', "--concurrency", dest="concurrency", default='',
-                                 help="Number of concurrent workers (default = <cpu_count>)")
+    workload_parser.add_argument('-c', "--concurrency", dest="concurrency", default='1', type=int,
+                                 help="Number of concurrent workers (default = 1)")
+    workload_parser.add_argument("--cpus", dest="cpus", type=int,
+                                 help="Number of CPUs to use (default = <system-cpu-count>)")
 
     # root -> init
     root_init = root_sub.add_parser('init', help='Init commands',
@@ -104,7 +107,7 @@ def setup_parser():
     root_run.add_argument('-p', '--port', dest='prom_port', default='26260', type=int,
                           help="The port of the Prometheus server. (default = 26260)")
     root_run.add_argument('--no-autocommit', default=True, dest='autocommit', action='store_false',
-                           help="Configure the psycopg Connection with autocommit. (default = True)")
+                          help="Configure the psycopg Connection with autocommit. (default = True)")
     root_run.set_defaults(parser=root_run)
     root_run.set_defaults(func=run)
 
@@ -198,10 +201,10 @@ def init_pgworkload(args: argparse.Namespace):
 
     global concurrency
 
-    if not args.concurrency:
-        args.concurrency = os.cpu_count()
-
     concurrency = int(args.concurrency)
+
+    if not args.cpus:
+        args.cpus = os.cpu_count()
 
     if not re.search(r'.*://.*/(.*)\?', args.dburl):
         logging.error(
@@ -236,7 +239,7 @@ def init_pgworkload(args: argparse.Namespace):
             logging.error(
                 f"The value passed to '--args' is not a valid JSON or a valid path to a JSON/YAML file: '{args.args}'")
             sys.exit(1)
-            
+
     return args
 
 
@@ -269,9 +272,12 @@ def run(args: argparse.Namespace):
 
     c = 0
 
-    for _ in range(concurrency):
+    threads_per_cpu = pgworkload.util.get_threads_per_cpu(
+        args.cpus, args.concurrency)
+
+    for x in threads_per_cpu:
         mp.Process(target=worker, daemon=True, args=(
-            q, kill_q, kill_q2, args.dburl, args.autocommit, workload, args.args, args.iterations, args.duration, args.conn_duration)).start()
+            x-1, q, kill_q, kill_q2, args.dburl, args.autocommit, workload, args.args, args.iterations, args.duration, args.conn_duration)).start()
 
     try:
         stat_time = time.time() + args.frequency
@@ -310,24 +316,45 @@ def run(args: argparse.Namespace):
         logging.error(e)
 
 
-def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str, autocommit: bool,
-           workload: object, args: dict, iterations: int, duration: int, conn_duration: int):
+def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue,
+           dburl: str, autocommit: bool,
+           workload: object, args: dict, iterations: int, duration: int, conn_duration: int,
+           threads: list = []):
     """Process worker function to run the workload in a multiprocessing env
 
     Args:
+        thread_count(int): The number of threads to create
         q (mp.Queue): queue to report query metrics
         kill_q (mp.Queue): queue to handle stopping the worker
         kill_q2 (mp.Queue): queue to handle stopping the worker
         dburl (str): connection string to the database
+        autocommit (bool): whether to set autocommit for the connection
         workload (object): workload class object
         args (dict): args to init the workload class
         iterations (int): count of workload iteration before returning
         duration (int): seconds before returning
         conn_duration (int): seconds before restarting the database connection
+        threads (list): the list of threads to wait to finish before returning
     """
-    logging.debug("Worker created")
-    # capture KeyboardInterrupt and do nothing
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    threads: list[threading.Thread] = []
+
+    for _ in range(thread_count):
+        thread = threading.Thread(
+            target=worker,
+            daemon=True, args=(0,
+                               q, kill_q, kill_q2, dburl, autocommit,
+                               workload, args, iterations,
+                               duration, conn_duration, [])
+        )
+        thread.start()
+        threads.append(thread)
+
+    if threading.current_thread().name == 'MainThread':
+        logging.debug("Process Worker created")
+        # capture KeyboardInterrupt and do nothing
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+    else:
+        logging.debug("Thread Worker created")
 
     # catch exception while instantiating the workload class
     try:
@@ -353,6 +380,9 @@ def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str, autocom
             kill_q.get(block=False)
             logging.debug("Poison pill received")
             kill_q2.put(None)
+            for x in threads:
+                x.join()
+
             return
         except queue.Empty:
             pass
@@ -366,6 +396,8 @@ def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str, autocom
                         kill_q.get(block=False)
                         logging.debug("Poison pill received")
                         kill_q2.put(None)
+                        for x in threads:
+                            x.join()
                         return
                     except queue.Empty:
                         pass
@@ -377,6 +409,8 @@ def worker(q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, dburl: str, autocom
 
                         # send task completed notification (a None)
                         q.put(None)
+                        for x in threads:
+                            x.join()
                         return
 
                     # break from the inner loop if limit for connection duration has been reached
@@ -749,4 +783,4 @@ args: argparse.Namespace = setup_parser()
 
 # setup global logging
 logging.basicConfig(level=getattr(logging, vars(args).get('loglevel', 'INFO').upper(), logging.INFO),
-                    format='%(asctime)s [%(levelname)s] (%(processName)s %(process)d) %(message)s')
+                    format='%(asctime)s [%(levelname)s] (%(processName)s %(process)d %(threadName)s) %(message)s')
