@@ -664,8 +664,12 @@ def __init_import_data(dburl: str, workload_path: str, dbms:
     mp.Process(target=pgworkload.util.httpserver,
                args=(csv_dir, 3000), daemon=True).start()
 
-    csv_files = os.listdir(csv_dir)
-
+    if os.path.isdir(csv_dir):
+        csv_files = os.listdir(csv_dir)
+    else:
+        logging.debug("Nothing to import, skipping...")
+        return
+    
     try:
         with psycopg.connect(dburl, autocommit=True) as conn:
             with conn.cursor() as cur:
