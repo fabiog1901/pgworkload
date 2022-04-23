@@ -66,8 +66,8 @@ def setup_parser():
                                  help='The application name specified by the client, if any. (default = <db name>)')
     workload_parser.add_argument('-c', "--concurrency", dest="concurrency", default='1', type=int,
                                  help="Number of concurrent workers (default = 1)")
-    workload_parser.add_argument("--cpus", dest="cpus", type=int,
-                                 help="Number of CPUs to use (default = <system-cpu-count>)")
+    workload_parser.add_argument('-x', "--procs", dest="procs", type=int,
+                                 help="Number of Processes to use (default = <system-cpu-count>)")
 
     # root -> init
     root_init = root_sub.add_parser('init', help='Init commands',
@@ -139,8 +139,8 @@ def setup_parser():
                                help='Filepath to the YAML data generation file')
     root_util_csv.add_argument('-o', '--output', dest='output', type=str, default='',
                                help='Output directory for the CSV files. (default = <input-basename>)')
-    root_util_csv.add_argument('-t', '--threads', dest="threads", default='',
-                               help="Number of concurrent threads/processes (default = <cpu_count>)")
+    root_util_csv.add_argument('-x', '--procs', dest="procs", default='', type=int,
+                               help="Number of concurrent processes (default = <system-cpu-count>)")
     root_util_csv.add_argument('-d', '--delimiter', default='\t', dest='delimiter',
                                help="The delimeter char to use for the CSV files. (default = '\\t')")
     root_util_csv.add_argument('-c', '--compression', default='', dest='compression',
@@ -203,8 +203,8 @@ def init_pgworkload(args: argparse.Namespace):
 
     concurrency = int(args.concurrency)
 
-    if not args.cpus:
-        args.cpus = os.cpu_count()
+    if not args.procs:
+        args.procs = os.cpu_count()
 
     if not re.search(r'.*://.*/(.*)\?', args.dburl):
         logging.error(
@@ -272,10 +272,10 @@ def run(args: argparse.Namespace):
 
     c = 0
 
-    threads_per_cpu = pgworkload.util.get_threads_per_cpu(
-        args.cpus, args.concurrency)
+    threads_per_proc = pgworkload.util.get_threads_per_proc(
+        args.procs, args.concurrency)
 
-    for x in threads_per_cpu:
+    for x in threads_per_proc:
         mp.Process(target=worker, daemon=True, args=(
             x-1, q, kill_q, kill_q2, args.dburl, args.autocommit, workload, args.args, args.iterations, args.duration, args.conn_duration)).start()
 
@@ -740,8 +740,8 @@ def util_csv(args: argparse.Namespace):
     if not args.compression:
         args.compression = None
 
-    if not args.threads:
-        args.threads = os.cpu_count()
+    if not args.procs:
+        args.procs = os.cpu_count()
 
     pgworkload.simplefaker.SimpleFaker().generate(
         load, int(args.threads), output_dir,  args.delimiter, args.compression)

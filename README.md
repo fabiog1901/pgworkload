@@ -66,10 +66,10 @@ Init the **Bank** workload.
 
 ```bash
 # CockroachDB
-pgworkload init -w=workloads/bank.py -c=8 --url='postgres://localhost:26257/postgres?sslmode=disable'
+pgworkload init -w workloads/bank.py -c 8 --url 'postgres://localhost:26257/postgres?sslmode=disable'
 
 # PostgreSQL
-pgworkload init --w=workloads/bank.py -c=8 --url='postgres://localhost:5432/postgres?sslmode=disable'
+pgworkload init --w workloads/bank.py -c 8 --url 'postgres://localhost:5432/postgres?sslmode=disable'
 ```
 
 You should see something like below
@@ -93,10 +93,10 @@ Run the workload using 8 connections for 120 seconds or 100k cycles, whichever c
 
 ```bash
 # CockroachDB
-pgworkload run -w=workloads/bank.py -c=8 --url='postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank' -d=120 -i=100000
+pgworkload run -w workloads/bank.py -c 8 --url 'postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank' -d 120 -i 100000
 
 # PostgreSQL
-pgworkload run -w=workloads/bank.py -c=8 --url='postgres://root@localhost:5432/bank?sslmode=disable&application_name=Bank' -d=120 -i=100000
+pgworkload run -w workloads/bank.py -c 8 --url 'postgres://root@localhost:5432/bank?sslmode=disable&application_name=Bank' -d 120 -i 100000
 ```
 
 `pgworkload` uses exclusively the excellent [Psycopg 3](https://www.psycopg.org/psycopg3/docs/) to connect.
@@ -134,6 +134,28 @@ Check them out with
 pgworkload -h
 ```
 
+## Concurrency - processes and threads
+
+pgworkload uses both the `multiprocessing` and `threading` library to achieve high concurrency, that is, opening multiple connection to the DBMS.
+
+There are 2 parameters that can be used to configure how many processes you want to create, and for each process, how many threads:
+
+- `--procs`, or `-x`, to configure the count of processes (defaults to the CPU count)
+- `--concurrency`, or `-c`, to configure the total number of executing workloads to run (also referred to as _executing threads_)
+
+pgworkload will spread the load across the processes, so that each process has an even amount of threads.
+
+Example: if we set `--procs 4` and `--concurrency 10`, pgworkload will create as follows:
+
+Process-1: MainThread + 2 extra threads. Total = 3
+Process-2: MainThread + 2 extra threads. Total = 3
+Process-3: MainThread + 1 extra thread.  Total = 2
+Process-3: MainThread + 1 extra thread.  Total = 2
+
+Total workloads = 10
+
+This allows you to fine tune the count of Python processes and threads to fit your system.
+
 ## Built-in Workloads
 
 `pgworkload` has the following workload already built-in and can be called without the need to pass a class file
@@ -146,9 +168,10 @@ It assumes the schema and data have been created and loaded.
 SQL statements file `mystmts.sql`
 
 ```sql
+-- Query 1
 select 1;
 select 
-version();
+  version();
 -- select now();
 SELECT * 
 FROM my_table 
@@ -158,7 +181,7 @@ WHERE id = 1234;
 Run **Querybench** like this:
 
 ```bash
-pgworkload run --workload=querybench --args=mystmts.sql --url=<conn-string>
+pgworkload run --workload querybench --args mystmts.sql --url <conn-string>
 ```
 
 ### Hovr
