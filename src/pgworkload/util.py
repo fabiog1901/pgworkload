@@ -500,3 +500,25 @@ def ddl_to_yaml(ddl: str):
         d[table_name] = table_list
 
     return yaml.dump(d, default_flow_style=False, sort_keys=False)
+
+
+def get_threads_per_proc(procs: int, threads: int):
+    """Returns a list of threads count per procs
+
+    Args:
+        procs (int): procs count
+        threads (int): threads count
+
+    Returns:
+        list: list of threads per procs
+    """
+    
+    c = int(threads / procs)
+    m = threads % procs
+
+    l = [c for _ in range(min(procs,threads))]
+
+    for x in range(m):
+        l[x] += 1
+
+    return l
