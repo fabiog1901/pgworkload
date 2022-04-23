@@ -28,6 +28,7 @@ def main():
     try:
         args.func(args)
     except AttributeError:
+        logging.error(e)
         args.parser.print_help()
     except Exception as e:
         logging.error(e)
@@ -88,6 +89,9 @@ def setup_parser():
                            help="Don't generate the CSV data files")
     root_init.add_argument('-i', '--skip-import', default=False, dest='skip_import', action='store_true',
                            help="Don't import the CSV dataset files")
+    root_init.add_argument('--csv-max-rows', default=100000, dest='csv_max_rows', type=int,
+                           help="Max count of rows per resulting CSV file")
+
     root_init.set_defaults(parser=root_init)
     root_init.set_defaults(func=init)
 
@@ -139,12 +143,14 @@ def setup_parser():
                                help='Filepath to the YAML data generation file')
     root_util_csv.add_argument('-o', '--output', dest='output', type=str, default='',
                                help='Output directory for the CSV files. (default = <input-basename>)')
-    root_util_csv.add_argument('-x', '--procs', dest="procs", default='', type=int,
+    root_util_csv.add_argument('-x', '--procs', dest="procs", type=int,
                                help="Number of concurrent processes (default = <system-cpu-count>)")
     root_util_csv.add_argument('-d', '--delimiter', default='\t', dest='delimiter',
                                help="The delimeter char to use for the CSV files. (default = '\\t')")
     root_util_csv.add_argument('-c', '--compression', default='', dest='compression',
                                help="The compression format. (defaults = '' (No compression))")
+    root_util_csv.add_argument('--csv-max-rows', default=100000, dest='csv_max_rows', type=int,
+                               help="Max count of rows per resulting CSV file")
     root_util_csv.set_defaults(func=util_csv)
 
     return root.parse_args()
@@ -489,7 +495,8 @@ def init(args: argparse.Namespace):
     if args.skip_gen:
         logging.debug("Skipping init_generate_data")
     else:
-        __init_generate_data(concurrency, args.workload_path, dbms)
+        __init_generate_data(
+            concurrency, args.workload_path, dbms, args.csv_max_rows)
 
     # PART 3 - IMPORT THE DATA
     dburl = pgworkload.util.get_new_dburl(args.dburl, args.db)
@@ -597,7 +604,7 @@ def __init_create_schema(dburl: str, drop: bool, db_name: str, workload_path: st
         sys.exit(1)
 
 
-def __init_generate_data(exec_threads: int, workload_path: str, dbms: str):
+def __init_generate_data(exec_threads: int, workload_path: str, dbms: str, csv_max_rows: int):
     """Generate random datasets for the workload using SimpleFaker.
     CSV files will be saved in a directory named after the workload.
 
@@ -630,11 +637,11 @@ def __init_generate_data(exec_threads: int, workload_path: str, dbms: str):
     compression = 'gzip' if dbms == "CockroachDB" else None
 
     # generate the data by parsing the load variable
-    pgworkload.simplefaker.SimpleFaker(seed=0).generate(load=load,
-                                                        exec_threads=exec_threads,
-                                                        csv_dir=csv_dir,
-                                                        delimiter='\t',
-                                                        compression=compression)
+    pgworkload.simplefaker.SimpleFaker(seed=0, csv_max_rows=csv_max_rows).generate(load=load,
+                                                                                   exec_threads=exec_threads,
+                                                                                   csv_dir=csv_dir,
+                                                                                   delimiter='\t',
+                                                                                   compression=compression)
 
 
 def __init_import_data(dburl: str, workload_path: str, dbms:
@@ -743,8 +750,8 @@ def util_csv(args: argparse.Namespace):
     if not args.procs:
         args.procs = os.cpu_count()
 
-    pgworkload.simplefaker.SimpleFaker().generate(
-        load, int(args.threads), output_dir,  args.delimiter, args.compression)
+    pgworkload.simplefaker.SimpleFaker(csv_max_rows=args.csv_max_rows).generate(
+        load, int(args.procs), output_dir,  args.delimiter, args.compression)
 
 
 def util_yaml(args: argparse.Namespace):
