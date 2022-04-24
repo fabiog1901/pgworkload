@@ -522,3 +522,17 @@ def get_threads_per_proc(procs: int, threads: int):
         l[x] += 1
 
     return l
+
+def get_import_stmt(csv_files: list, table_name: str, 
+                      http_server_hostname: str = 'myhost', http_server_port: str = '3000'):  
+    
+    csv_data = ''
+    for x in csv_files:
+        csv_data += "'http://%s:%s/%s'," % (
+            http_server_hostname, http_server_port, x)
+
+    stmt = (
+        "IMPORT INTO %s CSV DATA (%s) WITH delimiter = e'\t', nullif = '';" % (table_name, csv_data[:-1]))
+  
+    return stmt
+    

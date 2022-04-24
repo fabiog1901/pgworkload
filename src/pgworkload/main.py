@@ -65,8 +65,6 @@ def setup_parser():
                                  help="The connection string to the database. (default = 'postgres://root@localhost:26257/postgres?sslmode=disable')")
     workload_parser.add_argument('-a', '--app-name', dest='app_name',
                                  help='The application name specified by the client, if any. (default = <db name>)')
-    workload_parser.add_argument('-c', "--concurrency", dest="concurrency", default='1', type=int,
-                                 help="Number of concurrent workers (default = 1)")
     workload_parser.add_argument('-x', "--procs", dest="procs", type=int,
                                  help="Number of Processes to use (default = <system-cpu-count>)")
 
@@ -100,6 +98,8 @@ def setup_parser():
                                    description='description: Run the workload',
                                    epilog='GitHub: <https://github.com/fabiog1901/pgworkload>',
                                    parents=[common_parser, workload_parser])
+    root_run.add_argument('-c', "--concurrency", dest="concurrency", default='1', type=int,
+                          help="Number of concurrent workers (default = 1)")
     root_run.add_argument('-k', '--conn-duration', dest='conn_duration', type=int, default=0,
                           help='The number of seconds to keep database connections alive before resetting them. (default = 0 --> ad infinitum)')
     root_run.add_argument('-s', '--stats-frequency', dest='frequency', type=int, default=10,
@@ -151,6 +151,12 @@ def setup_parser():
                                help="The compression format. (defaults = '' (No compression))")
     root_util_csv.add_argument('--csv-max-rows', default=100000, dest='csv_max_rows', type=int,
                                help="Max count of rows per resulting CSV file")
+    root_util_csv.add_argument('-t', '--table-name', dest='table_name', default='table_name',
+                               help="The table name used in the import statement. (defaults = table_name)")
+    root_util_csv.add_argument('-n', '--hostname', dest='http_server_hostname', default='',
+                               help="The hostname of the http server that serves the CSV files. (defaults = <inferred>)")
+    root_util_csv.add_argument('-p', '--port', dest='http_server_port', default='3000',
+                               help="The port of the http server that servers the CSV files. (defaults = 3000)")
     root_util_csv.set_defaults(func=util_csv)
 
     return root.parse_args()
@@ -205,10 +211,6 @@ def init_pgworkload(args: argparse.Namespace):
     """
     logging.debug("Initialazing pgworkload")
 
-    global concurrency
-
-    concurrency = int(args.concurrency)
-
     if not args.procs:
         args.procs = os.cpu_count()
 
@@ -258,6 +260,10 @@ def run(args: argparse.Namespace):
 
     global stats
     args = init_pgworkload(args)
+
+    global concurrency
+
+    concurrency = int(args.concurrency)
 
     workload = pgworkload.util.import_class_at_runtime(path=args.workload_path)
 
@@ -496,7 +502,7 @@ def init(args: argparse.Namespace):
         logging.debug("Skipping init_generate_data")
     else:
         __init_generate_data(
-            concurrency, args.workload_path, dbms, args.csv_max_rows)
+            args.procs, args.workload_path, dbms, args.csv_max_rows)
 
     # PART 3 - IMPORT THE DATA
     dburl = pgworkload.util.get_new_dburl(args.dburl, args.db)
@@ -604,12 +610,12 @@ def __init_create_schema(dburl: str, drop: bool, db_name: str, workload_path: st
         sys.exit(1)
 
 
-def __init_generate_data(exec_threads: int, workload_path: str, dbms: str, csv_max_rows: int):
+def __init_generate_data(procs: int, workload_path: str, dbms: str, csv_max_rows: int):
     """Generate random datasets for the workload using SimpleFaker.
     CSV files will be saved in a directory named after the workload.
 
     Args:
-        exec_threads (int): count of concurrent processes to be used to generate the datasets
+        procs (int): count of concurrent processes to be used to generate the datasets
         workload_path (str): filepath to the workload class
         dbms (str): DBMS technology (CockroachDB, PostgreSQL, etc..)
     """
@@ -637,11 +643,8 @@ def __init_generate_data(exec_threads: int, workload_path: str, dbms: str, csv_m
     compression = 'gzip' if dbms == "CockroachDB" else None
 
     # generate the data by parsing the load variable
-    pgworkload.simplefaker.SimpleFaker(seed=0, csv_max_rows=csv_max_rows).generate(load=load,
-                                                                                   exec_threads=exec_threads,
-                                                                                   csv_dir=csv_dir,
-                                                                                   delimiter='\t',
-                                                                                   compression=compression)
+    pgworkload.simplefaker.SimpleFaker(seed=0, csv_max_rows=csv_max_rows).generate(
+        load, procs, csv_dir, '\t', compression)
 
 
 def __init_import_data(dburl: str, workload_path: str, dbms:
@@ -669,7 +672,7 @@ def __init_import_data(dburl: str, workload_path: str, dbms:
     else:
         logging.debug("Nothing to import, skipping...")
         return
-    
+
     try:
         with psycopg.connect(dburl, autocommit=True) as conn:
             with conn.cursor() as cur:
@@ -693,13 +696,8 @@ def __init_import_data(dburl: str, workload_path: str, dbms:
                     # we parallelize imports
                     for chunk in chunked_list:
                         if dbms == 'CockroachDB':
-                            csv_data = ''
-                            for x in chunk:
-                                csv_data += "'http://%s:%s/%s'," % (
-                                    http_server_hostname, http_server_port, x)
-
-                            stmt = (
-                                "IMPORT INTO %s CSV DATA (%s) WITH delimiter = e'\t', nullif = '';" % (table.replace('__', '.'), csv_data[:-1]))
+                            stmt = pgworkload.util.get_import_stmt(chunk, table.replace(
+                                '__', '.'), http_server_hostname, http_server_port)
 
                         elif dbms == 'PostgreSQL':
                             stmt = "COPY %s FROM '%s';" % (
@@ -710,6 +708,7 @@ def __init_import_data(dburl: str, workload_path: str, dbms:
 
                         logging.debug(f'Importing files: {chunk}')
                         cur.execute(stmt)
+
     except Exception as e:
         logging.error(f'Exception: {e}')
         sys.exit(1)
@@ -756,6 +755,18 @@ def util_csv(args: argparse.Namespace):
 
     pgworkload.simplefaker.SimpleFaker(csv_max_rows=args.csv_max_rows).generate(
         load, int(args.procs), output_dir,  args.delimiter, args.compression)
+
+    csv_files = os.listdir(output_dir)
+
+    if not args.http_server_hostname:
+        args.http_server_hostname = pgworkload.util.get_hostname()
+        logging.debug(
+            f"Hostname identified as: '{args.http_server_hostname}'")
+
+    stmt = pgworkload.util.get_import_stmt(
+        csv_files, args.table_name, args.http_server_hostname, args.http_server_port)
+
+    print(stmt)
 
 
 def util_yaml(args: argparse.Namespace):
