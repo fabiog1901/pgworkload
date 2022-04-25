@@ -706,7 +706,8 @@ def __init_import_data(dburl: str, workload_path: str, dbms:
                             logging.warning(f'DBMS not supported: {dbms}')
                             pass
 
-                        logging.debug(f'Importing files: {chunk}')
+                        logging.debug(f"'Importing files using command: '{stmt}'")
+                        
                         cur.execute(stmt)
 
     except Exception as e:

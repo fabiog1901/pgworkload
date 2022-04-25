@@ -532,7 +532,7 @@ def get_import_stmt(csv_files: list, table_name: str,
             http_server_hostname, http_server_port, x)
 
     stmt = (
-        "IMPORT INTO %s CSV DATA (%s) WITH delimiter = e'\t', nullif = '';" % (table_name, csv_data[:-1]))
+        "IMPORT INTO %s CSV DATA (%s) WITH delimiter = e'\\t', nullif = '';" % (table_name, csv_data[:-1]))
   
     return stmt
     
