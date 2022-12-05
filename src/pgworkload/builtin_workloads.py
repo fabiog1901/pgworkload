@@ -1,5 +1,4 @@
 import itertools
-from multiprocessing.sharedctypes import Value
 import psycopg
 
 
