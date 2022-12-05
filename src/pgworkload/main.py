@@ -27,7 +27,7 @@ def main():
     """
     try:
         args.func(args)
-    except AttributeError:
+    except AttributeError as e:
         logging.error(e)
         args.parser.print_help()
     except Exception as e:
@@ -108,6 +108,8 @@ def setup_parser():
                           help="Total number of iterations. (default = 0 --> ad infinitum)")
     root_run.add_argument('-d', '--duration', dest="duration", default=0, type=int,
                           help="Duration in seconds. (default = 0 --> ad infinitum)")
+    root_run.add_argument('-r', '--ramp', dest="ramp", default=0, type=int,
+                          help="Ramp up time in seconds. (defaut = 0)")
     root_run.add_argument('-p', '--port', dest='prom_port', default='26260', type=int,
                           help="The port of the Prometheus server. (default = 26260)")
     root_run.add_argument('--no-autocommit', default=True, dest='autocommit', action='store_false',
@@ -265,6 +267,7 @@ def run(args: argparse.Namespace):
 
     concurrency = int(args.concurrency)
 
+
     workload = pgworkload.util.import_class_at_runtime(path=args.workload_path)
 
     signal.signal(signal.SIGINT, signal_handler)
@@ -287,10 +290,13 @@ def run(args: argparse.Namespace):
     threads_per_proc = pgworkload.util.get_threads_per_proc(
         args.procs, args.concurrency)
 
+    ramp_intervals = int(args.ramp / len(threads_per_proc))
+
     for x in threads_per_proc:
         mp.Process(target=worker, daemon=True, args=(
             x-1, q, kill_q, kill_q2, args.dburl, args.autocommit, workload, args.args, args.iterations, args.duration, args.conn_duration)).start()
-
+        time.sleep(ramp_intervals)
+        
     try:
         stat_time = time.time() + args.frequency
         while True:

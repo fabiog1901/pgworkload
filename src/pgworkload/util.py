@@ -16,7 +16,7 @@ import yaml
 import prometheus_client
 
 RESERVED_WORDS = ['unique', 'inverted', 'index', 'constraint',
-                  'family', 'like', 'primary', 'key',
+                  'family', 'like', 'primary', 'foreign', 'key',
                   'create', 'table',
                   'if', 'not', 'exists', 'null',
                   'global', 'local', 'temporary', 'temp', 'unlogged',
@@ -145,7 +145,8 @@ def import_class_at_runtime(path: str):
     try:
         workload = getattr(pgworkload.builtin_workloads,
                            path.lower().capitalize())
-        logging.info(f"Loading built-in workload '{path.lower().capitalize()}'")
+        logging.info(
+            f"Loading built-in workload '{path.lower().capitalize()}'")
         return workload
     except AttributeError:
         pass
@@ -223,12 +224,14 @@ def get_workload_load(workload_path: str):
         with open(yaml_file, 'r') as f:
             return yaml.safe_load(f)
     else:
-        logging.debug(f'YAML file {yaml_file} not found. Loading data generation definition from the \'load\' variable')
+        logging.debug(
+            f'YAML file {yaml_file} not found. Loading data generation definition from the \'load\' variable')
         try:
             workload = import_class_at_runtime(workload_path)
             return yaml.safe_load(workload({}).load)
         except AttributeError as e:
-            logging.warning(f'{e}. Make sure self.load is a valid variable in __init__')
+            logging.warning(
+                f'{e}. Make sure self.load is a valid variable in __init__')
             return {}
 
 
@@ -512,20 +515,23 @@ def get_threads_per_proc(procs: int, threads: int):
     Returns:
         list: list of threads per procs
     """
-    
+
     c = int(threads / procs)
     m = threads % procs
 
-    l = [c for _ in range(min(procs,threads))]
+    l = [c for _ in range(min(procs, threads))]
 
     for x in range(m):
         l[x] += 1
 
+    l.sort()
+
     return l
 
-def get_import_stmt(csv_files: list, table_name: str, 
-                      http_server_hostname: str = 'myhost', http_server_port: str = '3000'):  
-    
+
+def get_import_stmt(csv_files: list, table_name: str,
+                    http_server_hostname: str = 'myhost', http_server_port: str = '3000'):
+
     csv_data = ''
     for x in csv_files:
         csv_data += "'http://%s:%s/%s'," % (
@@ -533,6 +539,5 @@ def get_import_stmt(csv_files: list, table_name: str,
 
     stmt = (
         "IMPORT INTO %s CSV DATA (%s) WITH delimiter = e'\\t', nullif = '';" % (table_name, csv_data[:-1]))
-  
+
     return stmt
-    
