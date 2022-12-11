@@ -1,9 +1,11 @@
+#!/usr/bin/python
+
 import http.server
 import importlib
 import logging
 import numpy as np
 import os
-import pgworkload.builtin_workloads
+import pgworkload.utils.builtin_workloads
 import psycopg
 import random
 import socket
@@ -143,7 +145,7 @@ def import_class_at_runtime(path: str):
     """
     # check if path is one of the built-in workloads
     try:
-        workload = getattr(pgworkload.builtin_workloads,
+        workload = getattr(pgworkload.utils.builtin_workloads,
                            path.lower().capitalize())
         logging.info(
             f"Loading built-in workload '{path.lower().capitalize()}'")
