@@ -7,6 +7,7 @@ import pandas as pd
 import uuid
 import random
 
+logger = logging.getLogger(__name__)
 
 class SimpleFaker:
     """Pseudo-random data generator based on 
@@ -266,7 +267,7 @@ class SimpleFaker:
         for table_name, table_details in load.items():
             csv_file_basename = os.path.join(csv_dir, table_name)
 
-            logging.info(f"Generating dataset for table '{table_name}'")
+            logger.info(f"Generating dataset for table '{table_name}'")
 
             for item in table_details:
                 col_names = list(item['columns'].keys())
@@ -385,7 +386,7 @@ class SimpleFaker:
             separator (str): the field delimiter in the CSV file
             compression (str): the compression format (gzip, zip, None..)
         """
-        logging.debug("SimpleFaker worker created")
+        logger.debug("SimpleFaker worker created")
         if iterations > self.csv_max_rows:
             count = int(iterations/self.csv_max_rows)
             rem = iterations % self.csv_max_rows
@@ -408,7 +409,7 @@ class SimpleFaker:
                 columns=col_names)\
                 .sort_values(by=sort_by)\
                 .to_csv(basename + '_' + str(x) + suffix, quoting=csv.QUOTE_NONE, sep=separator, header=False, index=False, compression=compression)
-            logging.debug(f"Saved file '{basename + '_' + str(x) + suffix}'")
+            logger.debug(f"Saved file '{basename + '_' + str(x) + suffix}'")
 
         # remaining rows, if any
         if rem > 0:
@@ -419,4 +420,4 @@ class SimpleFaker:
                 .sort_values(by=sort_by)\
                 .to_csv(basename + '_' + str(count) + suffix, sep=separator, header=False, index=False, compression=compression)
 
-            logging.debug(f"Saved file '{basename + '_' + str(x) + suffix}'")
+            logger.debug(f"Saved file '{basename + '_' + str(x) + suffix}'")

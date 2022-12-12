@@ -7,49 +7,9 @@ import os
 import pgworkload.utils.simplefaker
 import pgworkload.utils.util
 import sys
-import time
 import yaml
 
-DEFAULT_SLEEP = 5
-
-
-def signal_handler(sig, frame):
-    """Handles Ctrl+C events gracefully, 
-    ensuring all running processes are closed rather than killed.
-
-    Args:
-        sig (_type_): 
-        frame (_type_): 
-    """
-    global stats
-    global concurrency
-    logging.info("KeyboardInterrupt signal detected. Stopping processes...")
-
-    # send the poison pill to each worker
-    for _ in range(concurrency):
-        kill_q.put(None)
-
-    # wait until all workers return
-    start = time.time()
-    c = 0
-    timeout = True
-    while c < concurrency and timeout:
-        try:
-            kill_q2.get(block=False)
-            c += 1
-        except:
-            pass
-
-        time.sleep(0.01)
-        timeout = time.time() < start + 5
-
-    if not timeout:
-        logging.info("Timeout reached - forcing processes to stop")
-
-    logging.info("Printing final stats")
-    stats.print_stats()
-    sys.exit(0)
-
+logger = logging.getLogger(__name__)
 
 def util_csv(args: argparse.Namespace):
     """Wrapper around SimpleFaker to create CSV datasets
@@ -59,7 +19,7 @@ def util_csv(args: argparse.Namespace):
         args (argparse.Namespace): args passed at the CLI
     """
     if not args.input:
-        logging.error("No input argument was passed")
+        logger.error("No input argument was passed")
         print()
         args.parser.print_help()
         sys.exit(1)
@@ -97,7 +57,7 @@ def util_csv(args: argparse.Namespace):
 
     if not args.http_server_hostname:
         args.http_server_hostname = pgworkload.utils.util.get_hostname()
-        logging.debug(
+        logger.debug(
             f"Hostname identified as: '{args.http_server_hostname}'")
 
     stmt = pgworkload.utils.util.get_import_stmt(
@@ -115,7 +75,7 @@ def util_yaml(args: argparse.Namespace):
         args (argparse.Namespace): args passed at the CLI
     """
     if not args.input:
-        logging.error("No input argument was passed")
+        logger.error("No input argument was passed")
         print()
         args.parser.print_help()
         sys.exit(1)

@@ -1,25 +1,23 @@
 #!/usr/bin/python
 
 import argparse
-import datetime as dt
-import json
 import logging
 import multiprocessing as mp
-import os
 import pgworkload.utils.simplefaker
 import pgworkload.utils.util
 import psycopg
 import queue
 import random
-import re
 import signal
 import sys
 import threading
 import time
 import traceback
-import yaml
+import logging.handlers
 
 DEFAULT_SLEEP = 5
+
+logger = logging.getLogger(__name__)
 
 
 def signal_handler(sig, frame):
@@ -32,7 +30,7 @@ def signal_handler(sig, frame):
     """
     global stats
     global concurrency
-    logging.info("KeyboardInterrupt signal detected. Stopping processes...")
+    logger.info("KeyboardInterrupt signal detected. Stopping processes...")
 
     # send the poison pill to each worker
     for _ in range(concurrency):
@@ -53,62 +51,11 @@ def signal_handler(sig, frame):
         timeout = time.time() < start + 5
 
     if not timeout:
-        logging.info("Timeout reached - forcing processes to stop")
+        logger.info("Timeout reached - forcing processes to stop")
 
-    logging.info("Printing final stats")
+    logger.info("Printing final stats")
     stats.print_stats()
     sys.exit(0)
-
-
-def init_pgworkload(args: argparse.Namespace):
-    """Performs pgworkload initialization steps
-
-    Args:
-        args (argparse.Namespace): args passed at the CLI
-
-    Returns:
-        argparse.Namespace: updated args
-    """
-    logging.debug("Initialazing pgworkload")
-
-    if not args.procs:
-        args.procs = os.cpu_count()
-
-    if not re.search(r'.*://.*/(.*)\?', args.dburl):
-        logging.error(
-            "The connection string needs to point to a database. Example: postgres://root@localhost:26257/postgres?sslmode=disable")
-        sys.exit(1)
-
-    if not args.workload_path:
-        logging.error("No workload argument was passed")
-        print()
-        args.parser.print_help()
-        sys.exit(1)
-
-    workload = pgworkload.utils.util.import_class_at_runtime(path=args.workload_path)
-
-    args.dburl = pgworkload.utils.util.set_query_parameter(url=args.dburl, param_name="application_name",
-                                                     param_value=args.app_name if args.app_name else workload.__name__)
-
-    logging.info(f"URL: '{args.dburl}'")
-
-    # load args dict from file or string
-    if os.path.exists(args.args):
-        with open(args.args, 'r') as f:
-            args.args = f.read()
-            # parse into JSON if it's a JSON string
-            try:
-                args.args = json.load(args.args)
-            except Exception as e:
-                pass
-    else:
-        args.args = yaml.safe_load(args.args)
-        if isinstance(args.args, str):
-            logging.error(
-                f"The value passed to '--args' is not a valid JSON or a valid path to a JSON/YAML file: '{args.args}'")
-            sys.exit(1)
-
-    return args
 
 
 def run(args: argparse.Namespace):
@@ -117,15 +64,18 @@ def run(args: argparse.Namespace):
     Args:
         args (argparse.Namespace): the args passed at the CLI
     """
+    print("in run")
+    print(logging.getLevelName(logger.getEffectiveLevel()))
+    logger.info("in run()")
 
     global stats
-    args = init_pgworkload(args)
 
     global concurrency
 
     concurrency = int(args.concurrency)
 
-    workload = pgworkload.utils.util.import_class_at_runtime(path=args.workload_path)
+    workload = pgworkload.utils.util.import_class_at_runtime(
+        path=args.workload_path)
 
     signal.signal(signal.SIGINT, signal_handler)
 
@@ -151,7 +101,7 @@ def run(args: argparse.Namespace):
 
     for i, x in enumerate(threads_per_proc):
         mp.Process(target=worker, daemon=True, args=(
-            x-1, q, kill_q, kill_q2, args.dburl, args.autocommit, workload, args.args, args.iterations, args.duration, args.conn_duration)).start()
+            x-1, q, kill_q, kill_q2, logger.getEffectiveLevel(), args.dburl, args.autocommit, workload, args.args, args.iterations, args.duration, args.conn_duration)).start()
 
         if i < len(threads_per_proc)-1:
             time.sleep(ramp_intervals)
@@ -171,15 +121,15 @@ def run(args: argparse.Namespace):
 
             if c >= concurrency:
                 if isinstance(tup, psycopg.errors.UndefinedTable):
-                    logging.error(tup)
-                    logging.error(
+                    logger.error(tup)
+                    logger.error(
                         "The schema is not present. Did you initialize the workload?")
                     sys.exit(1)
                 elif isinstance(tup, Exception):
-                    logging.error("Exception raised: %s" % tup)
+                    logger.error("Exception raised: %s" % tup)
                     sys.exit(1)
                 else:
-                    logging.info(
+                    logger.info(
                         "Requested iteration/duration limit reached. Printing final stats")
                     stats.print_stats()
                     sys.exit(0)
@@ -190,10 +140,10 @@ def run(args: argparse.Namespace):
                 stat_time = time.time() + args.frequency
 
     except Exception as e:
-        logging.error(traceback.format_exc())
+        logger.error(traceback.format_exc())
 
 
-def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue,
+def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, loglevel: int,
            dburl: str, autocommit: bool,
            workload: object, args: dict, iterations: int, duration: int, conn_duration: int,
            threads: list = []):
@@ -213,25 +163,28 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue,
         conn_duration (int): seconds before restarting the database connection
         threads (list): the list of threads to wait to finish before returning
     """
+    logger.setLevel(loglevel)
+
     threads: list[threading.Thread] = []
 
     for _ in range(thread_count):
         thread = threading.Thread(
             target=worker,
-            daemon=True, args=(0,
-                               q, kill_q, kill_q2, dburl, autocommit,
-                               workload, args, iterations,
-                               duration, conn_duration, [])
+            daemon=True, 
+            args=(0,
+                q, kill_q, kill_q2, loglevel, dburl, autocommit,
+                workload, args, iterations,
+                duration, conn_duration, [])
         )
         thread.start()
         threads.append(thread)
 
     if threading.current_thread().name == 'MainThread':
-        logging.debug("Process Worker created")
+        logger.debug("Process Worker created")
         # capture KeyboardInterrupt and do nothing
         signal.signal(signal.SIGINT, signal.SIG_IGN)
     else:
-        logging.debug("Thread Worker created")
+        logger.debug("Thread Worker created")
 
     # catch exception while instantiating the workload class
     try:
@@ -255,7 +208,7 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue,
         # listen for termination messages (poison pill)
         try:
             kill_q.get(block=False)
-            logging.debug("Poison pill received")
+            logger.debug("Poison pill received")
             kill_q2.put(None)
             for x in threads:
                 x.join()
@@ -265,13 +218,13 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue,
             pass
         try:
             with psycopg.connect(dburl, autocommit=autocommit) as conn:
-                logging.debug("Connection started")
+                logger.debug("Connection started")
                 while True:
 
                     # listen for termination messages (poison pill)
                     try:
                         kill_q.get(block=False)
-                        logging.debug("Poison pill received")
+                        logger.debug("Poison pill received")
                         kill_q2.put(None)
                         for x in threads:
                             x.join()
@@ -282,7 +235,7 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue,
                     # return if the limits of either iteration count and duration have been reached
                     if (iterations > 0 and c >= iterations) or \
                             (duration > 0 and time.time() >= endtime):
-                        logging.debug("Task completed!")
+                        logger.debug("Task completed!")
 
                         # send task completed notification (a None)
                         q.put(None)
@@ -293,7 +246,7 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue,
                     # break from the inner loop if limit for connection duration has been reached
                     # this will cause for the outer loop to reset the timer and restart with a new conn
                     if conn_duration > 0 and time.time() >= conn_endtime:
-                        logging.debug(
+                        logger.debug(
                             "conn_duration reached, will reset the connection.")
                         break
 
@@ -320,11 +273,10 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue,
         # If the error is not beacuse of a disconnection, then unfortunately
         # the worker will continue forever
         except psycopg.Error as e:
-            logging.error(f'{e.__class__.__name__} {e}')
-            logging.info("Sleeping for %s seconds" % (DEFAULT_SLEEP))
+            logger.error(f'{e.__class__.__name__} {e}')
+            logger.info("Sleeping for %s seconds" % (DEFAULT_SLEEP))
             time.sleep(DEFAULT_SLEEP)
         except Exception as e:
-            logging.error("Exception: %s" % (e))
+            logger.error("Exception: %s" % (e))
             q.put(e)
             return
-

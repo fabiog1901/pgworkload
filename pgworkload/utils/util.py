@@ -28,6 +28,8 @@ DEFAULT_ARRAY_COUNT = 3
 SUPPORTED_DBMS = ["PostgreSQL", "CockroachDB"]
 
 
+logger = logging.getLogger(__name__)
+
 class QuietServerHandler(http.server.SimpleHTTPRequestHandler):
     """SimpleHTTPRequestHandler that doesn't output any log
     """
@@ -147,7 +149,7 @@ def import_class_at_runtime(path: str):
     try:
         workload = getattr(pgworkload.utils.builtin_workloads,
                            path.lower().capitalize())
-        logging.info(
+        logger.info(
             f"Loading built-in workload '{path.lower().capitalize()}'")
         return workload
     except AttributeError:
@@ -161,10 +163,10 @@ def import_class_at_runtime(path: str):
         module = importlib.import_module(module_name)
         return getattr(module, module_name.capitalize())
     except AttributeError as e:
-        logging.error(e)
+        logger.error(e)
         sys.exit(1)
     except ImportError as e:
-        logging.error(e)
+        logger.error(e)
         sys.exit(1)
 
 
@@ -185,7 +187,7 @@ def run_transaction(conn: psycopg.Connection, op, max_retries=3):
             # This is a retry error, so we roll back the current
             # transaction and sleep for a bit before retrying. The
             # sleep time increases for each failed transaction.
-            logging.debug(f'psycopg.SerializationFailure:: {e}')
+            logger.debug(f'psycopg.SerializationFailure:: {e}')
             conn.rollback()
             time.sleep((2 ** retry) * 0.1 * (random.random() + 0.5))
         except psycopg.Error as e:
@@ -221,18 +223,18 @@ def get_workload_load(workload_path: str):
     yaml_file = os.path.abspath(get_based_name_dir(workload_path) + '.yaml')
 
     if os.path.exists(yaml_file):
-        logging.debug(
+        logger.debug(
             'Found data generation definition YAML file %s' % yaml_file)
         with open(yaml_file, 'r') as f:
             return yaml.safe_load(f)
     else:
-        logging.debug(
+        logger.debug(
             f'YAML file {yaml_file} not found. Loading data generation definition from the \'load\' variable')
         try:
             workload = import_class_at_runtime(workload_path)
             return yaml.safe_load(workload({}).load)
         except AttributeError as e:
-            logging.warning(
+            logger.warning(
                 f'{e}. Make sure self.load is a valid variable in __init__')
             return {}
 
@@ -289,7 +291,7 @@ def httpserver(path: str, port: int = 3000):
         with socketserver.TCPServer(server_address=("", port), RequestHandlerClass=QuietServerHandler) as httpd:
             httpd.serve_forever()
     except OSError as e:
-        logging.error(e)
+        logger.error(e)
         return
 
 

@@ -5,23 +5,31 @@ import logging
 import pgworkload.models.run
 import pgworkload.models.init
 import pgworkload.models.util
-
+import re
+import sys
+import os
+import yaml
+import json
 
 DEFAULT_SLEEP = 5
+
+logger = logging.getLogger(__name__)
 
 
 def main():
     """This is the Entrypoint function
     """
     args: argparse.Namespace = setup_parser()
-    
+
+    logging.getLogger(__package__).setLevel(args.loglevel.upper())
+
     try:
         args.func(args)
     except AttributeError as e:
-        logging.error(e)
+        logger.error(e)
         args.parser.print_help()
     except Exception as e:
-        logging.error(e)
+        logger.error(e, stack_info=True)
 
 
 def setup_parser():
@@ -33,13 +41,14 @@ def setup_parser():
     # Common options to all parsers
     common_parser = argparse.ArgumentParser(add_help=False)
 
-    common_parser.add_argument('-l', '--log-level', dest='loglevel', default='info',
+    common_parser.add_argument('-l', '--log-level', dest='loglevel', default='INFO',
+                               choices=['debug', 'info', 'warning', 'error'],
                                help='The log level ([debug|info|warning|error]). (default = info)')
 
     # root
-    root = argparse.ArgumentParser(description='pgworkload2  - workload framework for the PostgreSQL protocol',
+    root = argparse.ArgumentParser(description='pgworkload - workload framework for the PostgreSQL protocol',
                                    epilog='GitHub: <https://github.com/fabiog1901/pgworkload>',
-                                   parents=[])
+                                   parents=[common_parser])
     root.set_defaults(parser=root)
     root.set_defaults(func=print_help)
 
@@ -48,7 +57,7 @@ def setup_parser():
     # workload options (common to root_init and root_run)
     workload_parser = argparse.ArgumentParser(add_help=False)
 
-    workload_parser.add_argument('-w', '--workload', dest='workload_path',
+    workload_parser.add_argument('-w', '--workload', dest='workload_path', required=True,
                                  help="Path to the workload module. Eg: workloads/bank.py for class 'Bank'")
     workload_parser.add_argument('--args', dest='args', default='{}',
                                  help='JSON string, or filepath to a JSON/YAML string, to pass to Workload')
@@ -155,8 +164,51 @@ def setup_parser():
     return root.parse_args()
 
 
-def print_help(args):
+def print_help(args: argparse.Namespace):
     args.parser.print_help()
+
+
+def __validate(args: argparse.Namespace):
+    """Performs pgworkload initialization steps
+
+    Args:
+        args (argparse.Namespace): args passed at the CLI
+
+    Returns:
+        argparse.Namespace: updated args
+    """
+
+    if not args.procs:
+        args.procs = os.cpu_count()
+
+    if not re.search(r'.*://.*/(.*)\?', args.dburl):
+        logger.error(
+            "The connection string needs to point to a database. Example: postgres://root@localhost:26257/postgres?sslmode=disable")
+        sys.exit(1)
+
+    workload = pgworkload.utils.util.import_class_at_runtime(
+        path=args.workload_path)
+
+    args.dburl = pgworkload.utils.util.set_query_parameter(url=args.dburl, param_name="application_name",
+                                                           param_value=args.app_name if args.app_name else workload.__name__)
+
+    # load args dict from file or string
+    if os.path.exists(args.args):
+        with open(args.args, 'r') as f:
+            args.args = f.read()
+            # parse into JSON if it's a JSON string
+            try:
+                args.args = json.load(args.args)
+            except Exception as e:
+                pass
+    else:
+        args.args = yaml.safe_load(args.args)
+        if isinstance(args.args, str):
+            logger.error(
+                f"The value passed to '--args' is not a valid JSON or a valid path to a JSON/YAML file: '{args.args}'")
+            sys.exit(1)
+
+    return args
 
 
 def run(args: argparse.Namespace):
@@ -166,8 +218,11 @@ def run(args: argparse.Namespace):
         args (argparse.Namespace): the args passed at the CLI
     """
 
+    args = __validate(args)
+
     pgworkload.models.run.run(args)
-    
+
+
 def init(args: argparse.Namespace):
     """Initialize the workload.
     Includes tasks like:
@@ -178,9 +233,9 @@ def init(args: argparse.Namespace):
     Args:
         args (argparse.Namespace): the args passed at the CLI
     """
-    
+
+    args = __validate(args)
     pgworkload.models.init.init(args)
-    
 
 
 def util_csv(args: argparse.Namespace):
@@ -191,7 +246,6 @@ def util_csv(args: argparse.Namespace):
         args (argparse.Namespace): args passed at the CLI
     """
     pgworkload.models.util.util_csv(args)
-    
 
 
 def util_yaml(args: argparse.Namespace):
@@ -202,10 +256,5 @@ def util_yaml(args: argparse.Namespace):
     Args:
         args (argparse.Namespace): args passed at the CLI
     """
-    
-    pgworkload.models.util.util_yaml(args)
-    
 
-# setup global logging
-logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s [%(levelname)s] (%(processName)s %(process)d %(threadName)s) %(module)s:%(lineno)d %(message)s')
+    pgworkload.models.util.util_yaml(args)
