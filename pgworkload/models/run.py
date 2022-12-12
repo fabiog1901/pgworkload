@@ -1,6 +1,5 @@
 #!/usr/bin/python
 
-import argparse
 import logging
 import multiprocessing as mp
 import pgworkload.utils.simplefaker
@@ -58,32 +57,23 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
-def run(args: argparse.Namespace):
-    """Run the workload
-
-    Args:
-        args (argparse.Namespace): the args passed at the CLI
-    """
-    print("in run")
-    print(logging.getLevelName(logger.getEffectiveLevel()))
-    logger.info("in run()")
+def run(conc: int, workload_path: str, frequency: int, prom_port: int, iterations: int, procs: int, ramp: int, dburl: str, 
+        autocommit: bool, duration: int, conn_duration: int, args: dict):
 
     global stats
 
     global concurrency
 
-    concurrency = int(args.concurrency)
+    concurrency = conc
 
-    workload = pgworkload.utils.util.import_class_at_runtime(
-        path=args.workload_path)
+    workload = pgworkload.utils.util.import_class_at_runtime(workload_path)
 
     signal.signal(signal.SIGINT, signal_handler)
 
-    stats = pgworkload.utils.util.Stats(
-        frequency=args.frequency, prom_port=args.prom_port)
+    stats = pgworkload.utils.util.Stats(frequency, prom_port)
 
-    if args.iterations > 0:
-        args.iterations = int(args.iterations / concurrency)
+    if iterations > 0:
+        iterations = iterations // concurrency
 
     global kill_q
     global kill_q2
@@ -95,19 +85,19 @@ def run(args: argparse.Namespace):
     c = 0
 
     threads_per_proc = pgworkload.utils.util.get_threads_per_proc(
-        args.procs, args.concurrency)
+        procs, conc)
 
-    ramp_intervals = int(args.ramp / len(threads_per_proc))
+    ramp_intervals = int(ramp / len(threads_per_proc))
 
     for i, x in enumerate(threads_per_proc):
         mp.Process(target=worker, daemon=True, args=(
-            x-1, q, kill_q, kill_q2, logger.getEffectiveLevel(), args.dburl, args.autocommit, workload, args.args, args.iterations, args.duration, args.conn_duration)).start()
+            x-1, q, kill_q, kill_q2, logger.getEffectiveLevel(), dburl, autocommit, workload, args, iterations, duration, conn_duration)).start()
 
         if i < len(threads_per_proc)-1:
             time.sleep(ramp_intervals)
 
     try:
-        stat_time = time.time() + args.frequency
+        stat_time = time.time() + frequency
         while True:
             try:
                 # read from the queue for stats or completion messages
@@ -137,7 +127,7 @@ def run(args: argparse.Namespace):
             if time.time() >= stat_time:
                 stats.print_stats()
                 stats.new_window()
-                stat_time = time.time() + args.frequency
+                stat_time = time.time() + frequency
 
     except Exception as e:
         logger.error(traceback.format_exc())

@@ -5,6 +5,7 @@ import logging
 import pgworkload.models.run
 import pgworkload.models.init
 import pgworkload.models.util
+import pgworkload.utils.util
 import re
 import sys
 import os
@@ -220,7 +221,20 @@ def run(args: argparse.Namespace):
 
     args = __validate(args)
 
-    pgworkload.models.run.run(args)
+    pgworkload.models.run.run(
+        conc=args.concurrency,
+        workload_path=args.workload_path,
+        frequency=args.frequency,
+        prom_port=args.prom_port,
+        iterations=args.iterations,
+        procs=args.procs,
+        ramp=args.ramp,
+        dburl=args.dburl,
+        autocommit=args.autocommit,
+        duration=args.duration,
+        conn_duration=args.conn_duration,
+        args=args.args
+    )
 
 
 def init(args: argparse.Namespace):

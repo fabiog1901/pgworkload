@@ -43,7 +43,7 @@ class Stats:
     and export the stats as Prometheus endpoints
     """
 
-    def __init__(self, frequency, prom_port: int = 26260):
+    def __init__(self, frequency: int, prom_port: int = 26260):
         self.cumulative_counts = {}
         self.instantiation_time = time.time()
         self.frequency = frequency
