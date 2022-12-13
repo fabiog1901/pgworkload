@@ -34,11 +34,7 @@ def main():
 
 
 def setup_parser():
-    """Parses CLI arguments
 
-    Returns:
-        (argparse.Namespace): The object with the passed arguments
-    """
     # Common options to all parsers
     common_parser = argparse.ArgumentParser(add_help=False)
 
@@ -131,7 +127,7 @@ def setup_parser():
                                               description='description: Generate YAML data generation file from a DDL SQL file',
                                               epilog='GitHub: <https://github.com/fabiog1901/pgworkload>',
                                               parents=[common_parser])
-    root_util_yaml.add_argument('-i', '--input', dest='input', type=str, default='',
+    root_util_yaml.add_argument('-i', '--input', dest='input', type=str, default='', required=True,
                                 help='Filepath to the DDL SQL file')
     root_util_yaml.add_argument('-o', '--output', dest='output', type=str, default='',
                                 help='Output filepath. (default = <input-basename>.yaml)')
@@ -142,7 +138,7 @@ def setup_parser():
                                              description='description: Generate CSV files from a a YAML data generation file',
                                              epilog='GitHub: <https://github.com/fabiog1901/pgworkload>',
                                              parents=[common_parser])
-    root_util_csv.add_argument('-i', '--input', dest='input', type=str,
+    root_util_csv.add_argument('-i', '--input', dest='input', type=str, required=True,
                                help='Filepath to the YAML data generation file')
     root_util_csv.add_argument('-o', '--output', dest='output', type=str, default='',
                                help='Output directory for the CSV files. (default = <input-basename>)')
@@ -213,11 +209,6 @@ def __validate(args: argparse.Namespace):
 
 
 def run(args: argparse.Namespace):
-    """Run the workload
-
-    Args:
-        args (argparse.Namespace): the args passed at the CLI
-    """
 
     args = __validate(args)
 
@@ -238,37 +229,39 @@ def run(args: argparse.Namespace):
 
 
 def init(args: argparse.Namespace):
-    """Initialize the workload.
-    Includes tasks like:
-    - create database and schema;
-    - generate random datasets
-    - import datasets into the database
-
-    Args:
-        args (argparse.Namespace): the args passed at the CLI
-    """
 
     args = __validate(args)
-    pgworkload.models.init.init(args)
+    pgworkload.models.init.init(
+        db=args.db,
+        workload_path=args.workload_path,
+        dburl=args.dburl,
+        skip_schema=args.skip_schema,
+        drop=args.drop,
+        skip_gen=args.skip_gen,
+        procs=args.procs,
+        csv_max_rows=args.csv_max_rows,
+        skip_import=args.skip_import,
+        http_server_hostname=args.http_server_hostname,
+        http_server_port=args.http_server_port,
+        args=args.args
+    )
 
 
 def util_csv(args: argparse.Namespace):
-    """Wrapper around SimpleFaker to create CSV datasets
-    given an input YAML data gen definition file
 
-    Args:
-        args (argparse.Namespace): args passed at the CLI
-    """
-    pgworkload.models.util.util_csv(args)
+    pgworkload.models.util.util_csv(
+        input=args.input,
+        output=args.output,
+        compression=args.compression,
+        procs=args.procs,
+        csv_max_rows=args.csv_max_rows,
+        delimiter=args.delimiter,
+        http_server_hostname=args.http_server_hostname,
+        http_server_port=args.http_server_port,
+        table_name=args.table_name
+    )
 
 
 def util_yaml(args: argparse.Namespace):
-    """Wrapper around util function ddl_to_yaml() for 
-    crafting a data gen definition YAML string from 
-    CREATE TABLE statements.
 
-    Args:
-        args (argparse.Namespace): args passed at the CLI
-    """
-
-    pgworkload.models.util.util_yaml(args)
+    pgworkload.models.util.util_yaml(input=args.input, output=args.output)

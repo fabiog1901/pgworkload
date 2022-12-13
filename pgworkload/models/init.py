@@ -1,92 +1,45 @@
 #!/usr/bin/python
 
-import argparse
 import datetime as dt
-import json
 import logging
 import multiprocessing as mp
 import os
 import pgworkload.utils.simplefaker
 import pgworkload.utils.util
 import psycopg
-import re
 import sys
-import yaml
 
 logger = logging.getLogger(__name__)
 
-def init_pgworkload(args: argparse.Namespace):
-    """Performs pgworkload initialization steps
 
-    Args:
-        args (argparse.Namespace): args passed at the CLI
-
-    Returns:
-        argparse.Namespace: updated args
-    """
-    logger.debug("Initialazing pgworkload")
-
-    if not args.procs:
-        args.procs = os.cpu_count()
-
-    if not re.search(r'.*://.*/(.*)\?', args.dburl):
-        logger.error(
-            "The connection string needs to point to a database. Example: postgres://root@localhost:26257/postgres?sslmode=disable")
-        sys.exit(1)
-
-    if not args.workload_path:
-        logger.error("No workload argument was passed")
-        print()
-        args.parser.print_help()
-        sys.exit(1)
-
-    workload = pgworkload.utils.util.import_class_at_runtime(path=args.workload_path)
-
-    args.dburl = pgworkload.utils.util.set_query_parameter(url=args.dburl, param_name="application_name",
-                                                     param_value=args.app_name if args.app_name else workload.__name__)
-
-    logger.info(f"URL: '{args.dburl}'")
-
-    # load args dict from file or string
-    if os.path.exists(args.args):
-        with open(args.args, 'r') as f:
-            args.args = f.read()
-            # parse into JSON if it's a JSON string
-            try:
-                args.args = json.load(args.args)
-            except Exception as e:
-                pass
-    else:
-        args.args = yaml.safe_load(args.args)
-        if isinstance(args.args, str):
-            logger.error(
-                f"The value passed to '--args' is not a valid JSON or a valid path to a JSON/YAML file: '{args.args}'")
-            sys.exit(1)
-
-    return args
-
-
-def init(args: argparse.Namespace):
+def init(db: str,
+         workload_path: str,
+         dburl: str,
+         skip_schema: bool,
+         drop: bool,
+         skip_gen: bool,
+         procs: int,
+         csv_max_rows: int,
+         skip_import: bool,
+         http_server_hostname: str,
+         http_server_port: str,
+         args: dict
+         ):
     """Initialize the workload.
     Includes tasks like:
     - create database and schema;
     - generate random datasets
     - import datasets into the database
-
-    Args:
-        args (argparse.Namespace): the args passed at the CLI
     """
+    
     logger.debug("Running init")
 
-    args = init_pgworkload(args)
-
-    if not args.db:
-        args.db = os.path.splitext(
-            os.path.basename(args.workload_path))[0].lower()
+    if not db:
+        db = os.path.splitext(os.path.basename(workload_path))[0].lower()
 
     # PG or CRDB?
     try:
-        dbms: str = pgworkload.utils.util.get_dbms(args.dburl)
+        dbms: str = pgworkload.utils.util.get_dbms(dburl)
     except ValueError as e:
         logger.error(e)
         sys.exit(1)
@@ -95,38 +48,38 @@ def init(args: argparse.Namespace):
         dbms: str = None
 
     # PART 1 - CREATE THE SCHEMA
-    if args.skip_schema:
+    if skip_schema:
         logger.debug("Skipping init_create_schema")
     else:
-        __init_create_schema(args.dburl,
-                             args.drop, args.db, args.workload_path, dbms)
+        __init_create_schema(dburl,
+                             drop, db, workload_path, dbms)
 
     # PART 2 - GENERATE THE DATA
-    if args.skip_gen:
+    if skip_gen:
         logger.debug("Skipping init_generate_data")
     else:
         __init_generate_data(
-            args.procs, args.workload_path, dbms, args.csv_max_rows)
+            procs, workload_path, dbms, csv_max_rows)
 
     # PART 3 - IMPORT THE DATA
-    dburl = pgworkload.utils.util.get_new_dburl(args.dburl, args.db)
-    if args.skip_import:
+    dburl = pgworkload.utils.util.get_new_dburl(dburl, db)
+    if skip_import:
         logger.debug("Skipping init_import_data")
     else:
-        if not args.http_server_hostname:
-            args.http_server_hostname = pgworkload.utils.util.get_hostname()
+        if not http_server_hostname:
+            http_server_hostname = pgworkload.utils.util.get_hostname()
             logger.debug(
-                f"Hostname identified as: '{args.http_server_hostname}'")
+                f"Hostname identified as: '{http_server_hostname}'")
 
-        __init_import_data(dburl, args.workload_path, dbms,
-                           args.http_server_hostname, args.http_server_port)
+        __init_import_data(dburl, workload_path, dbms,
+                           http_server_hostname, http_server_port)
 
     # PART 4 - RUN WORKLOAD INIT
     logger.debug("Running workload.init()")
-    workload = pgworkload.utils.util.import_class_at_runtime(args.workload_path)
+    workload = pgworkload.utils.util.import_class_at_runtime(workload_path)
     try:
         with psycopg.connect(dburl, autocommit=True) as conn:
-            workload(args.args).init(conn)
+            workload(args).init(conn)
     except Exception as e:
         logger.error(e)
         sys.exit(1)
@@ -318,5 +271,3 @@ def __init_import_data(dburl: str, workload_path: str, dbms:
     except Exception as e:
         logger.error(f'Exception: {e}')
         sys.exit(1)
-
-

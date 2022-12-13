@@ -1,36 +1,36 @@
 #!/usr/bin/python
 
-import argparse
 import datetime as dt
 import logging
 import os
 import pgworkload.utils.simplefaker
 import pgworkload.utils.util
-import sys
 import yaml
 
 logger = logging.getLogger(__name__)
 
-def util_csv(args: argparse.Namespace):
+
+def util_csv(input: str,
+             output: str,
+             compression: str,
+             procs: int,
+             csv_max_rows: int,
+             delimiter: str,
+             http_server_hostname: str,
+             http_server_port: str,
+             table_name: str
+             ):
     """Wrapper around SimpleFaker to create CSV datasets
     given an input YAML data gen definition file
-
-    Args:
-        args (argparse.Namespace): args passed at the CLI
     """
-    if not args.input:
-        logger.error("No input argument was passed")
-        print()
-        args.parser.print_help()
-        sys.exit(1)
 
-    with open(args.input, 'r') as f:
+    with open(input, 'r') as f:
         load = yaml.safe_load(f.read())
 
-    if not args.output:
-        output_dir = pgworkload.utils.util.get_based_name_dir(args.input)
+    if not output:
+        output_dir = pgworkload.utils.util.get_based_name_dir(input)
     else:
-        output_dir = args.output
+        output_dir = output
 
     # backup the current directory as to not override
     if os.path.isdir(output_dir):
@@ -44,49 +44,41 @@ def util_csv(args: argparse.Namespace):
     # create new directory
     os.mkdir(output_dir)
 
-    if not args.compression:
-        args.compression = None
+    if not compression:
+        compression = None
 
-    if not args.procs:
-        args.procs = os.cpu_count()
+    if not procs:
+        procs = os.cpu_count()
 
-    pgworkload.utils.simplefaker.SimpleFaker(csv_max_rows=args.csv_max_rows).generate(
-        load, int(args.procs), output_dir,  args.delimiter, args.compression)
+    pgworkload.utils.simplefaker.SimpleFaker(csv_max_rows=csv_max_rows).generate(
+        load, int(procs), output_dir,  delimiter, compression)
 
     csv_files = os.listdir(output_dir)
 
-    if not args.http_server_hostname:
-        args.http_server_hostname = pgworkload.utils.util.get_hostname()
+    if not http_server_hostname:
+        http_server_hostname = pgworkload.utils.util.get_hostname()
         logger.debug(
-            f"Hostname identified as: '{args.http_server_hostname}'")
+            f"Hostname identified as: '{http_server_hostname}'")
 
     stmt = pgworkload.utils.util.get_import_stmt(
-        csv_files, args.table_name, args.http_server_hostname, args.http_server_port)
+        csv_files, table_name, http_server_hostname, http_server_port)
 
     print(stmt)
 
 
-def util_yaml(args: argparse.Namespace):
+def util_yaml(input: str, output: str):
     """Wrapper around util function ddl_to_yaml() for 
     crafting a data gen definition YAML string from 
     CREATE TABLE statements.
-
-    Args:
-        args (argparse.Namespace): args passed at the CLI
     """
-    if not args.input:
-        logger.error("No input argument was passed")
-        print()
-        args.parser.print_help()
-        sys.exit(1)
 
-    with open(args.input, 'r') as f:
+    with open(input, 'r') as f:
         ddl = f.read()
 
-    if not args.output:
-        output = pgworkload.utils.util.get_based_name_dir(args.input) + '.yaml'
+    if not output:
+        output = pgworkload.utils.util.get_based_name_dir(input) + '.yaml'
     else:
-        output = args.output
+        output = output
 
     # backup the current file as to not override
     if os.path.exists(output):
@@ -96,5 +88,3 @@ def util_yaml(args: argparse.Namespace):
     # create new directory
     with open(output, 'w') as f:
         f.write(pgworkload.utils.util.ddl_to_yaml(ddl))
-
-
