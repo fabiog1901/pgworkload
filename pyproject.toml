@@ -15,6 +15,7 @@ classifiers = [
 
 [tool.poetry.scripts]
 pgworkload = 'pgworkload.main:main'
+pgwkl = 'pgworkload.cli:app'
 
 [tool.poetry.dependencies]
 python = "^3.8"
@@ -25,6 +26,7 @@ tabulate = "^0.9.0"
 numpy = "^1.23.5"
 prometheus-client = "^0.15.0"
 pyyaml = "^6.0"
+typer = {extras = ["all"], version = "^0.7.0"}
 
 
 [build-system]

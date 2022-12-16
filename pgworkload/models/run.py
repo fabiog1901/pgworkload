@@ -57,8 +57,25 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
-def run(conc: int, workload_path: str, frequency: int, prom_port: int, iterations: int, procs: int, ramp: int, dburl: str, 
-        autocommit: bool, duration: int, conn_duration: int, args: dict):
+def pippo(processes: list[mp.Process], ramp_interval: int):
+    for p in processes:
+        logger.debug("Starting a new Process...")
+        p.start()
+        time.sleep(ramp_interval)
+
+
+def run(conc: int,
+        workload_path: str,
+        frequency: int,
+        prom_port: int,
+        iterations: int,
+        procs: int,
+        ramp: int,
+        dburl: str,
+        autocommit: bool,
+        duration: int,
+        conn_duration: int,
+        args: dict):
 
     global stats
 
@@ -72,7 +89,7 @@ def run(conc: int, workload_path: str, frequency: int, prom_port: int, iteration
 
     stats = pgworkload.utils.util.Stats(frequency, prom_port)
 
-    if iterations > 0:
+    if iterations:
         iterations = iterations // concurrency
 
     global kill_q
@@ -86,15 +103,23 @@ def run(conc: int, workload_path: str, frequency: int, prom_port: int, iteration
 
     threads_per_proc = pgworkload.utils.util.get_threads_per_proc(
         procs, conc)
+    ramp_interval = int(ramp / len(threads_per_proc))
 
-    ramp_intervals = int(ramp / len(threads_per_proc))
+    processes: list[mp.Process] = []
 
-    for i, x in enumerate(threads_per_proc):
-        mp.Process(target=worker, daemon=True, args=(
-            x-1, q, kill_q, kill_q2, logger.getEffectiveLevel(), dburl, autocommit, workload, args, iterations, duration, conn_duration)).start()
+    for x in threads_per_proc:
+        processes.append(
+            mp.Process(
+                target=worker,
+                daemon=True,
+                args=(x-1, q, kill_q, kill_q2, logger.getEffectiveLevel(),
+                      dburl, autocommit, workload, args, iterations,
+                      duration, conn_duration
+                      )
+            )
+        )
 
-        if i < len(threads_per_proc)-1:
-            time.sleep(ramp_intervals)
+    threading.Thread(target=pippo, args=(processes, ramp_interval)).start()
 
     try:
         stat_time = time.time() + frequency
@@ -160,21 +185,18 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, 
     for _ in range(thread_count):
         thread = threading.Thread(
             target=worker,
-            daemon=True, 
+            daemon=True,
             args=(0,
-                q, kill_q, kill_q2, loglevel, dburl, autocommit,
-                workload, args, iterations,
-                duration, conn_duration, [])
+                  q, kill_q, kill_q2, loglevel, dburl, autocommit,
+                  workload, args, iterations,
+                  duration, conn_duration, [])
         )
         thread.start()
         threads.append(thread)
 
     if threading.current_thread().name == 'MainThread':
-        logger.debug("Process Worker created")
         # capture KeyboardInterrupt and do nothing
         signal.signal(signal.SIGINT, signal.SIG_IGN)
-    else:
-        logger.debug("Thread Worker created")
 
     # catch exception while instantiating the workload class
     try:
@@ -188,13 +210,13 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, 
     endtime = 0
     conn_endtime = 0
 
-    if duration > 0:
+    if duration:
         endtime = time.time() + duration
 
     while True:
-        if conn_duration > 0:
-            # reconnect every conn_duration +/-10%
-            conn_endtime = time.time() + int(conn_duration * random.uniform(.9, 1.1))
+        if conn_duration:
+            # reconnect every conn_duration +/- 20%
+            conn_endtime = time.time() + int(conn_duration * random.uniform(.8, 1.2))
         # listen for termination messages (poison pill)
         try:
             kill_q.get(block=False)
@@ -223,8 +245,8 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, 
                         pass
 
                     # return if the limits of either iteration count and duration have been reached
-                    if (iterations > 0 and c >= iterations) or \
-                            (duration > 0 and time.time() >= endtime):
+                    if (iterations and c >= iterations) or \
+                            (duration and time.time() >= endtime):
                         logger.debug("Task completed!")
 
                         # send task completed notification (a None)
@@ -235,7 +257,7 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, 
 
                     # break from the inner loop if limit for connection duration has been reached
                     # this will cause for the outer loop to reset the timer and restart with a new conn
-                    if conn_duration > 0 and time.time() >= conn_endtime:
+                    if conn_duration and time.time() >= conn_endtime:
                         logger.debug(
                             "conn_duration reached, will reset the connection.")
                         break
@@ -267,6 +289,6 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, 
             logger.info("Sleeping for %s seconds" % (DEFAULT_SLEEP))
             time.sleep(DEFAULT_SLEEP)
         except Exception as e:
-            logger.error("Exception: %s" % (e))
+            logger.error("Exception: %s" % (e), stack_info=True)
             q.put(e)
             return
