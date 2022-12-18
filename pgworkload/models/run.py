@@ -57,7 +57,7 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
-def pippo(processes: list[mp.Process], ramp_interval: int):
+def ramp_up(processes: list[mp.Process], ramp_interval: int):
     for p in processes:
         logger.debug("Starting a new Process...")
         p.start()
@@ -119,7 +119,7 @@ def run(conc: int,
             )
         )
 
-    threading.Thread(target=pippo, args=(processes, ramp_interval)).start()
+    threading.Thread(target=ramp_up, args=(processes, ramp_interval)).start()
 
     try:
         stat_time = time.time() + frequency

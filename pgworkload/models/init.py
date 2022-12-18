@@ -31,7 +31,7 @@ def init(db: str,
     - generate random datasets
     - import datasets into the database
     """
-    
+
     logger.debug("Running init")
 
     if not db:

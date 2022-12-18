@@ -77,8 +77,6 @@ def util_yaml(input: str, output: str):
 
     if not output:
         output = pgworkload.utils.util.get_based_name_dir(input) + '.yaml'
-    else:
-        output = output
 
     # backup the current file as to not override
     if os.path.exists(output):

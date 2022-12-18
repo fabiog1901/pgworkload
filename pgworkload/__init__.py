@@ -1,8 +1,15 @@
 import logging
 
+from importlib import metadata
+
+__version__ = metadata.version(__package__)
+
+del metadata  # optional, avoids polluting the results of dir(__package__)
+
 logger = logging.getLogger(__package__)
 logger.setLevel(logging.INFO)
-ch = logging.StreamHandler()
-formatter = logging.Formatter('%(asctime)s [%(levelname)s] (%(processName)s %(process)d %(threadName)s) %(name)s:%(funcName)s:%(lineno)d - %(message)s')
-ch.setFormatter(formatter)
-logger.addHandler(ch)
+sh = logging.StreamHandler()
+formatter = logging.Formatter(
+    '%(asctime)s [%(levelname)s] (%(processName)s %(process)d %(threadName)s) %(module)s: - %(message)s')
+sh.setFormatter(formatter)
+logger.addHandler(sh)

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pgworkload"
-version = "0.1.0"
+version = "0.1.1"
 description = "Workload framework for the PostgreSQL protocol"
 authors = ["Fabio Ghirardello"]
 license = "GPLv3+"
@@ -14,8 +14,7 @@ classifiers = [
 ]
 
 [tool.poetry.scripts]
-pgworkload = 'pgworkload.main:main'
-pgwkl = 'pgworkload.cli:app'
+pgworkload = 'pgworkload.cli.main:app'
 
 [tool.poetry.dependencies]
 python = "^3.8"
