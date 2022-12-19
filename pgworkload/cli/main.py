@@ -126,8 +126,8 @@ def run(
     log_level: LogLevel = Param.LogLevel,
 ):
 
-    logging.getLogger(__package__).setLevel(log_level.upper())
-
+    logger.setLevel(log_level.upper())
+    
     logger.debug("Executing run()")
 
     procs, dburl, args = __validate(
@@ -145,7 +145,8 @@ def run(
         autocommit=autocommit,
         duration=duration,
         conn_duration=conn_duration,
-        args=args
+        args=args,
+        log_level=log_level.upper()
     )
 
 
@@ -197,7 +198,8 @@ def init(
         skip_import=skip_import,
         http_server_hostname=http_server_hostname,
         http_server_port=http_server_port,
-        args=args
+        args=args,
+        log_level=log_level.upper()
     )
 
 

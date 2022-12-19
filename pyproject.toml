@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pgworkload"
-version = "0.1.1"
+version = "0.1.2"
 description = "Workload framework for the PostgreSQL protocol"
 authors = ["Fabio Ghirardello"]
 license = "GPLv3+"

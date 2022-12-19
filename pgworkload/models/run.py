@@ -2,7 +2,6 @@
 
 import logging
 import multiprocessing as mp
-import pgworkload.utils.simplefaker
 import pgworkload.utils.util
 import psycopg
 import queue
@@ -14,7 +13,7 @@ import time
 import traceback
 import logging.handlers
 
-DEFAULT_SLEEP = 5
+DEFAULT_SLEEP = 3
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +58,7 @@ def signal_handler(sig, frame):
 
 def ramp_up(processes: list[mp.Process], ramp_interval: int):
     for p in processes:
-        logger.debug("Starting a new Process...")
+        logger.info("Starting a new Process...")
         p.start()
         time.sleep(ramp_interval)
 
@@ -75,11 +74,15 @@ def run(conc: int,
         autocommit: bool,
         duration: int,
         conn_duration: int,
-        args: dict):
+        args: dict,
+        log_level: str):
 
+    logger.setLevel(log_level)
+    
     global stats
-
     global concurrency
+    global kill_q
+    global kill_q2
 
     concurrency = conc
 
@@ -91,9 +94,6 @@ def run(conc: int,
 
     if iterations:
         iterations = iterations // concurrency
-
-    global kill_q
-    global kill_q2
 
     q = mp.Queue(maxsize=1000)
     kill_q = mp.Queue()
@@ -111,15 +111,14 @@ def run(conc: int,
         processes.append(
             mp.Process(
                 target=worker,
-                daemon=True,
-                args=(x-1, q, kill_q, kill_q2, logger.getEffectiveLevel(),
+                args=(x-1, q, kill_q, kill_q2, log_level,
                       dburl, autocommit, workload, args, iterations,
                       duration, conn_duration
                       )
             )
         )
 
-    threading.Thread(target=ramp_up, args=(processes, ramp_interval)).start()
+    threading.Thread(target=ramp_up, daemon=True, args=(processes, ramp_interval)).start()
 
     try:
         stat_time = time.time() + frequency
@@ -158,7 +157,7 @@ def run(conc: int,
         logger.error(traceback.format_exc())
 
 
-def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, loglevel: int,
+def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, log_level: str,
            dburl: str, autocommit: bool,
            workload: object, args: dict, iterations: int, duration: int, conn_duration: int,
            threads: list = []):
@@ -178,7 +177,8 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, 
         conn_duration (int): seconds before restarting the database connection
         threads (list): the list of threads to wait to finish before returning
     """
-    logger.setLevel(loglevel)
+    logger.setLevel(log_level)
+
 
     threads: list[threading.Thread] = []
 
@@ -187,7 +187,7 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, 
             target=worker,
             daemon=True,
             args=(0,
-                  q, kill_q, kill_q2, loglevel, dburl, autocommit,
+                  q, kill_q, kill_q2, log_level, dburl, autocommit,
                   workload, args, iterations,
                   duration, conn_duration, [])
         )

@@ -23,7 +23,8 @@ def init(db: str,
          skip_import: bool,
          http_server_hostname: str,
          http_server_port: str,
-         args: dict
+         args: dict,
+         log_level: str
          ):
     """Initialize the workload.
     Includes tasks like:
@@ -31,7 +32,7 @@ def init(db: str,
     - generate random datasets
     - import datasets into the database
     """
-
+    logger.setLevel(log_level)
     logger.debug("Running init")
 
     if not db:
