@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 app = typer.Typer(epilog=EPILOG,
                   no_args_is_help=True,
-                  help=f'pgworkload v{__version__}: Workload framework for the PostgreSQL protocol.')
+                  help=f'pgworkload v{__version__}: Workload utility for the PostgreSQL protocol.')
 
 util_app = typer.Typer(epilog=EPILOG,
                        no_args_is_help=True,

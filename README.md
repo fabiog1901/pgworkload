@@ -1,8 +1,8 @@
-# pgworkload - workload framework for the PostgreSQL protocol
+# pgworkload - workload utility for the PostgreSQL protocol
 
 ## Overview
 
-The goal of `pgworkload` is to ease the creation of workload scripts by providing a framework with the most common functionality already implemented.
+The goal of `pgworkload` is to ease the creation of workload scripts by providing a utility with the most common functionality already implemented.
 
 `pgworkload` is run in conjunction with a user supplied Python `class`. This class defines the workload transactions and flow.
 

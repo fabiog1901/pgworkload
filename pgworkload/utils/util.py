@@ -30,6 +30,7 @@ SUPPORTED_DBMS = ["PostgreSQL", "CockroachDB"]
 
 logger = logging.getLogger(__name__)
 
+
 class QuietServerHandler(http.server.SimpleHTTPRequestHandler):
     """SimpleHTTPRequestHandler that doesn't output any log
     """
@@ -44,22 +45,22 @@ class Stats:
     """
 
     def __init__(self, frequency: int, prom_port: int = 26260):
-        self.cumulative_counts = {}
+        self.cumulative_counts: dict[str, int] = {}
         self.instantiation_time = time.time()
         self.frequency = frequency
 
-        self.prom_latency = {}
+        self.prom_latency: dict[str, prometheus_client.Summary] = {}
         prometheus_client.start_http_server(prom_port)
 
         self.new_window()
 
     # reset stats while keeping cumulative counts
-    def new_window(self):
-        self.window_start_time = time.time()
-        self.window_stats = {}
+    def new_window(self) -> None:
+        self.window_start_time: float = time.time()
+        self.window_stats: dict[str, list[float]] = {}
 
     # add one latency measurement in seconds
-    def add_latency_measurement(self, action: str, measurement):
+    def add_latency_measurement(self, action: str, measurement: float) -> None:
         self.window_stats.setdefault(action, []).append(measurement)
         self.cumulative_counts.setdefault(action, 0)
         self.cumulative_counts[action] += 1
@@ -67,54 +68,30 @@ class Stats:
         if action not in self.prom_latency:
             self.prom_latency[action] = prometheus_client.Summary(f'latency_{action}',
                                                                   f'Latency for transaction {action}')
-        self.prom_latency.get(action).observe(measurement)
+        self.prom_latency[action].observe(measurement)
 
-    # print the current stats this instance has collected.
-    # If action_list is empty, it will only prevent rows it has captured this period, otherwise it will print a row for each action.
-    def print_stats(self, action_list=[]):
-        def get_percentile_measurement(action, percentile):
-            return np.percentile(self.window_stats.setdefault(action, [0]), percentile)
+    # calculate the current stats this instance has collected.
+    def calculate_stats(self) -> list:
 
-        def get_stats_row(action):
-            elapsed = time.time() - self.instantiation_time
+        def get_stats_row(action: str):
+            elapsed: float = time.time() - self.instantiation_time
 
-            if action in self.window_stats:
-                return [action,
-                        round(elapsed, 0),
-                        self.cumulative_counts[action],
-                        round(self.cumulative_counts[action] / elapsed, 2),
-                        len(self.window_stats[action]),
-                        round(
-                            len(self.window_stats[action]) / self.frequency, 2),
-                        round(
-                            float(np.mean(self.window_stats[action]) * 1000), 2),
-                        round(float(get_percentile_measurement(
-                            action, 50)) * 1000, 2),
-                        round(float(get_percentile_measurement(
-                            action, 90)) * 1000, 2),
-                        round(float(get_percentile_measurement(
-                            action, 95)) * 1000, 2),
-                        round(float(get_percentile_measurement(
-                            action, 99)) * 1000, 2),
-                        round(float(get_percentile_measurement(
-                            action, 100)) * 1000, 2)]
-            else:
-                return [action, round(elapsed, 0), self.cumulative_counts.get(action, 0), 0, 0, 0, 0, 0, 0]
+            arr = np.array(self.window_stats[action])
 
-        header = ["id", "elapsed",  "tot_ops", "tot_ops/s",
-                  "period_ops", "period_ops/s", "mean(ms)",  "p50(ms)", "p90(ms)", "p95(ms)", "p99(ms)", "pMax(ms)"]
-        rows = []
+            return [action,
+                    round(elapsed, 0),
+                    self.cumulative_counts[action],
+                    round(self.cumulative_counts[action] / elapsed, 2),
+                    len(arr),
+                    round(len(arr) / self.frequency, 2),
+                    round(np.mean(arr) * 1000, 2),
+                    round(np.percentile(arr, 50) * 1000, 2),
+                    round(np.percentile(arr, 90) * 1000, 2),
+                    round(np.percentile(arr, 95) * 1000, 2),
+                    round(np.percentile(arr, 99) * 1000, 2),
+                    round(np.max(arr) * 1000, 2)]
 
-        try:
-            if len(action_list):
-                for action in sorted(action_list):
-                    rows.append(get_stats_row(action))
-            else:
-                for action in sorted(list(self.window_stats)):
-                    rows.append(get_stats_row(action))
-            print(tabulate.tabulate(rows, header), "\n")
-        finally:
-            pass
+        return [get_stats_row(action) for action in sorted(list(self.window_stats.keys()))]
 
 
 def set_query_parameter(url: str, param_name: str, param_value: str):

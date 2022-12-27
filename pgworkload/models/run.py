@@ -12,11 +12,15 @@ import threading
 import time
 import traceback
 import logging.handlers
+import tabulate
 
 DEFAULT_SLEEP = 3
 
 logger = logging.getLogger(__name__)
 
+HEADERS: list[str] = ["id", "elapsed",  "tot_ops", "tot_ops/s", "period_ops",
+                    "period_ops/s", "mean(ms)",  "p50(ms)", "p90(ms)", "p95(ms)",
+                    "p99(ms)", "pMax(ms)"]
 
 def signal_handler(sig, frame):
     """Handles Ctrl+C events gracefully, 
@@ -52,11 +56,11 @@ def signal_handler(sig, frame):
         logger.info("Timeout reached - forcing processes to stop")
 
     logger.info("Printing final stats")
-    stats.print_stats()
+    __print_stats()
     sys.exit(0)
 
 
-def ramp_up(processes: list[mp.Process], ramp_interval: int):
+def __ramp_up(processes: list[mp.Process], ramp_interval: int):
     for p in processes:
         logger.info("Starting a new Process...")
         p.start()
@@ -78,7 +82,7 @@ def run(conc: int,
         log_level: str):
 
     logger.setLevel(log_level)
-    
+
     global stats
     global concurrency
     global kill_q
@@ -118,8 +122,11 @@ def run(conc: int,
             )
         )
 
-    threading.Thread(target=ramp_up, daemon=True, args=(processes, ramp_interval)).start()
+    threading.Thread(target=__ramp_up, daemon=True,
+                     args=(processes, ramp_interval)).start()
 
+    
+    
     try:
         stat_time = time.time() + frequency
         while True:
@@ -145,11 +152,12 @@ def run(conc: int,
                 else:
                     logger.info(
                         "Requested iteration/duration limit reached. Printing final stats")
-                    stats.print_stats()
+                    __print_stats()
+
                     sys.exit(0)
 
             if time.time() >= stat_time:
-                stats.print_stats()
+                __print_stats()
                 stats.new_window()
                 stat_time = time.time() + frequency
 
@@ -178,7 +186,6 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, 
         threads (list): the list of threads to wait to finish before returning
     """
     logger.setLevel(log_level)
-
 
     threads: list[threading.Thread] = []
 
@@ -292,3 +299,9 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, 
             logger.error("Exception: %s" % (e), stack_info=True)
             q.put(e)
             return
+
+
+
+def __print_stats():
+    print(tabulate.tabulate(
+                        stats.calculate_stats(), HEADERS), "\n")
