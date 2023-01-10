@@ -11,7 +11,6 @@ import random
 import socket
 import socketserver
 import sys
-import tabulate
 import time
 import urllib.parse
 import yaml

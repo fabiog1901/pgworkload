@@ -18,7 +18,7 @@ DEFAULT_SLEEP = 3
 
 logger = logging.getLogger(__name__)
 
-HEADERS: list[str] = ["id", "elapsed",  "tot_ops", "tot_ops/s", "period_ops",
+HEADERS: list = ["id", "elapsed",  "tot_ops", "tot_ops/s", "period_ops",
                     "period_ops/s", "mean(ms)",  "p50(ms)", "p90(ms)", "p95(ms)",
                     "p99(ms)", "pMax(ms)"]
 
@@ -60,7 +60,7 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
-def __ramp_up(processes: list[mp.Process], ramp_interval: int):
+def __ramp_up(processes: list, ramp_interval: int):
     for p in processes:
         logger.info("Starting a new Process...")
         p.start()
