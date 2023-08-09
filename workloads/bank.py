@@ -7,15 +7,17 @@ import logging
 
 
 class Bank:
-
     def __init__(self, args: dict):
         # args is a dict of string passed with the --args flag
         # user passed a yaml/json, in python that's a dict object
 
-        self.read_pct: float = float(args.get('read_pct', 50) / 100)
+        self.read_pct: float = float(args.get("read_pct", 50) / 100)
 
-        self.lane: str = random.choice(['ACH', 'DEPO', 'WIRE']) if not args.get(
-            'lane', '') else args['lane']
+        self.lane: str = (
+            random.choice(["ACH", "DEPO", "WIRE"])
+            if not args.get("lane", "")
+            else args["lane"]
+        )
 
         # self.schema holds the DDL
         self.schema: str = """
@@ -48,14 +50,14 @@ credits:
 
         # you can arbitrarely add any variables you want
         self.uuid: uuid.UUID = uuid.uuid4()
-        self.ts: dt.datetime = ''
-        self.event: str = ''
+        self.ts: dt.datetime = ""
+        self.event: str = ""
 
     # the 'init' method is executed once, when the --init flag is passed
 
     def init(self, conn: psycopg.Connection):
         with conn.cursor() as cur:
-            logging.info(cur.execute('select version();').fetchone())
+            logging.info(cur.execute("select version();").fetchone())
 
     # the run method returns a list of transactions to be executed continuosly,
     # sequentially, as in a cycle.
@@ -69,7 +71,9 @@ credits:
     def read(self, conn: psycopg.Connection):
         with conn.cursor() as cur:
             cur.execute(
-                "select * from transactions where lane = %s and id = %s", (self.lane, self.uuid))
+                "select * from transactions where lane = %s and id = %s",
+                (self.lane, self.uuid),
+            )
             cur.fetchone()
 
     def txn1_new(self, conn: psycopg.Connection):
@@ -91,7 +95,9 @@ credits:
             with conn.cursor() as cur:
                 # as we're inside 'tx', the below will not autocommit
                 cur.execute(
-                    "select * from ref_data where my_sequence = %s", (random.randint(0, 100000), ))
+                    "select * from ref_data where my_sequence = %s",
+                    (random.randint(0, 100000),),
+                )
                 cur.fetchone()
 
                 # simulate microservice doing something
@@ -109,7 +115,9 @@ credits:
         with conn.transaction() as tx:
             with conn.cursor() as cur:
                 cur.execute(
-                    "select * from ref_data where my_sequence = %s", (random.randint(0, 100000), ))
+                    "select * from ref_data where my_sequence = %s",
+                    (random.randint(0, 100000),),
+                )
                 cur.fetchone()
 
                 # simulate microservice doing something

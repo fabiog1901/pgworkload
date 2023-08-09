@@ -18,17 +18,29 @@ DEFAULT_SLEEP = 3
 
 logger = logging.getLogger(__name__)
 
-HEADERS: list = ["id", "elapsed",  "tot_ops", "tot_ops/s", "period_ops",
-                    "period_ops/s", "mean(ms)",  "p50(ms)", "p90(ms)", "p95(ms)",
-                    "p99(ms)", "pMax(ms)"]
+HEADERS: list = [
+    "id",
+    "elapsed",
+    "tot_ops",
+    "tot_ops/s",
+    "period_ops",
+    "period_ops/s",
+    "mean(ms)",
+    "p50(ms)",
+    "p90(ms)",
+    "p95(ms)",
+    "p99(ms)",
+    "pMax(ms)",
+]
+
 
 def signal_handler(sig, frame):
-    """Handles Ctrl+C events gracefully, 
+    """Handles Ctrl+C events gracefully,
     ensuring all running processes are closed rather than killed.
 
     Args:
-        sig (_type_): 
-        frame (_type_): 
+        sig (_type_):
+        frame (_type_):
     """
     global stats
     global concurrency
@@ -67,20 +79,22 @@ def __ramp_up(processes: list, ramp_interval: int):
         time.sleep(ramp_interval)
 
 
-def run(conc: int,
-        workload_path: str,
-        frequency: int,
-        prom_port: int,
-        iterations: int,
-        procs: int,
-        ramp: int,
-        dburl: str,
-        autocommit: bool,
-        duration: int,
-        conn_duration: int,
-        args: dict,
-        log_level: str):
-
+def run(
+    conc: int,
+    workload_path: str,
+    builtin_workload: str,
+    frequency: int,
+    prom_port: int,
+    iterations: int,
+    procs: int,
+    ramp: int,
+    dburl: str,
+    autocommit: bool,
+    duration: int,
+    conn_duration: int,
+    args: dict,
+    log_level: str,
+):
     logger.setLevel(log_level)
 
     global stats
@@ -90,7 +104,9 @@ def run(conc: int,
 
     concurrency = conc
 
-    workload = pgworkload.utils.util.import_class_at_runtime(workload_path)
+    workload = pgworkload.utils.util.import_class_at_runtime(
+        workload_path if workload_path else builtin_workload
+    )
 
     signal.signal(signal.SIGINT, signal_handler)
 
@@ -105,8 +121,7 @@ def run(conc: int,
 
     c = 0
 
-    threads_per_proc = pgworkload.utils.util.get_threads_per_proc(
-        procs, conc)
+    threads_per_proc = pgworkload.utils.util.get_threads_per_proc(procs, conc)
     ramp_interval = int(ramp / len(threads_per_proc))
 
     processes: list[mp.Process] = []
@@ -115,18 +130,27 @@ def run(conc: int,
         processes.append(
             mp.Process(
                 target=worker,
-                args=(x-1, q, kill_q, kill_q2, log_level,
-                      dburl, autocommit, workload, args, iterations,
-                      duration, conn_duration
-                      )
+                args=(
+                    x - 1,
+                    q,
+                    kill_q,
+                    kill_q2,
+                    log_level,
+                    dburl,
+                    autocommit,
+                    workload,
+                    args,
+                    iterations,
+                    duration,
+                    conn_duration,
+                ),
             )
         )
 
-    threading.Thread(target=__ramp_up, daemon=True,
-                     args=(processes, ramp_interval)).start()
+    threading.Thread(
+        target=__ramp_up, daemon=True, args=(processes, ramp_interval)
+    ).start()
 
-    
-    
     try:
         stat_time = time.time() + frequency
         while True:
@@ -144,14 +168,16 @@ def run(conc: int,
                 if isinstance(tup, psycopg.errors.UndefinedTable):
                     logger.error(tup)
                     logger.error(
-                        "The schema is not present. Did you initialize the workload?")
+                        "The schema is not present. Did you initialize the workload?"
+                    )
                     sys.exit(1)
                 elif isinstance(tup, Exception):
                     logger.error("Exception raised: %s" % tup)
                     sys.exit(1)
                 else:
                     logger.info(
-                        "Requested iteration/duration limit reached. Printing final stats")
+                        "Requested iteration/duration limit reached. Printing final stats"
+                    )
                     __print_stats()
 
                     sys.exit(0)
@@ -165,10 +191,21 @@ def run(conc: int,
         logger.error(traceback.format_exc())
 
 
-def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, log_level: str,
-           dburl: str, autocommit: bool,
-           workload: object, args: dict, iterations: int, duration: int, conn_duration: int,
-           threads: list = []):
+def worker(
+    thread_count: int,
+    q: mp.Queue,
+    kill_q: mp.Queue,
+    kill_q2: mp.Queue,
+    log_level: str,
+    dburl: str,
+    autocommit: bool,
+    workload: object,
+    args: dict,
+    iterations: int,
+    duration: int,
+    conn_duration: int,
+    threads: list = [],
+):
     """Process worker function to run the workload in a multiprocessing env
 
     Args:
@@ -193,15 +230,26 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, 
         thread = threading.Thread(
             target=worker,
             daemon=True,
-            args=(0,
-                  q, kill_q, kill_q2, log_level, dburl, autocommit,
-                  workload, args, iterations,
-                  duration, conn_duration, [])
+            args=(
+                0,
+                q,
+                kill_q,
+                kill_q2,
+                log_level,
+                dburl,
+                autocommit,
+                workload,
+                args,
+                iterations,
+                duration,
+                conn_duration,
+                [],
+            ),
         )
         thread.start()
         threads.append(thread)
 
-    if threading.current_thread().name == 'MainThread':
+    if threading.current_thread().name == "MainThread":
         # capture KeyboardInterrupt and do nothing
         signal.signal(signal.SIGINT, signal.SIG_IGN)
 
@@ -223,7 +271,7 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, 
     while True:
         if conn_duration:
             # reconnect every conn_duration +/- 20%
-            conn_endtime = time.time() + int(conn_duration * random.uniform(.8, 1.2))
+            conn_endtime = time.time() + int(conn_duration * random.uniform(0.8, 1.2))
         # listen for termination messages (poison pill)
         try:
             kill_q.get(block=False)
@@ -239,7 +287,6 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, 
             with psycopg.connect(dburl, autocommit=autocommit) as conn:
                 logger.debug("Connection started")
                 while True:
-
                     # listen for termination messages (poison pill)
                     try:
                         kill_q.get(block=False)
@@ -252,8 +299,9 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, 
                         pass
 
                     # return if the limits of either iteration count and duration have been reached
-                    if (iterations and c >= iterations) or \
-                            (duration and time.time() >= endtime):
+                    if (iterations and c >= iterations) or (
+                        duration and time.time() >= endtime
+                    ):
                         logger.debug("Task completed!")
 
                         # send task completed notification (a None)
@@ -266,20 +314,22 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, 
                     # this will cause for the outer loop to reset the timer and restart with a new conn
                     if conn_duration and time.time() >= conn_endtime:
                         logger.debug(
-                            "conn_duration reached, will reset the connection.")
+                            "conn_duration reached, will reset the connection."
+                        )
                         break
 
                     cycle_start = time.time()
                     for txn in w.run():
                         start = time.time()
                         pgworkload.utils.util.run_transaction(
-                            conn, lambda conn: txn(conn))
+                            conn, lambda conn: txn(conn)
+                        )
                         if not q.full():
                             q.put((txn.__name__, time.time() - start))
 
                     c += 1
                     if not q.full():
-                        q.put(('__cycle__', time.time() - cycle_start))
+                        q.put(("__cycle__", time.time() - cycle_start))
 
         # catch any error, pass that error to the MainProcess
         except psycopg.errors.UndefinedTable as e:
@@ -292,7 +342,7 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, 
         # If the error is not beacuse of a disconnection, then unfortunately
         # the worker will continue forever
         except psycopg.Error as e:
-            logger.error(f'{e.__class__.__name__} {e}')
+            logger.error(f"{e.__class__.__name__} {e}")
             logger.info("Sleeping for %s seconds" % (DEFAULT_SLEEP))
             time.sleep(DEFAULT_SLEEP)
         except Exception as e:
@@ -301,7 +351,5 @@ def worker(thread_count: int, q: mp.Queue, kill_q: mp.Queue, kill_q2: mp.Queue, 
             return
 
 
-
 def __print_stats():
-    print(tabulate.tabulate(
-                        stats.calculate_stats(), HEADERS), "\n")
+    print(tabulate.tabulate(stats.calculate_stats(), HEADERS), "\n")

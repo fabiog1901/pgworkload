@@ -10,22 +10,21 @@ class Querybench:
     """
 
     def __init__(self, args: str):
-        
         # organize all SQL stmts in individual strings
         if not args or not isinstance(args, str):
             raise ValueError("Parameter 'args' is empty or invalid.")
-        
+
         # cleaning the input
-        l: list = [x.strip() for x in args.split('\n')]
-        l: list = ' '.join([x for x in l if x != '' and not x.startswith('--')])
-        
-        self.stmts: list = [x.strip() for x in l[:-1].split(';')]
-    
+        l: list = [x.strip() for x in args.split("\n")]
+        l: list = " ".join([x for x in l if x != "" and not x.startswith("--")])
+
+        self.stmts: list = [x.strip() for x in l[:-1].split(";")]
+
         # print(self.stmts)
         # create a continuous cycle from the parameters
         self.stmts_cycle = itertools.cycle(self.stmts)
-        self.schema = ''
-        self.load = ''
+        self.schema = ""
+        self.load = ""
 
     def init(self, conn: psycopg.Connection):
         pass
@@ -38,12 +37,10 @@ class Querybench:
             cur.execute(next(self.stmts_cycle))
 
 
-class Hovr():
-    """Hovr is a spin-off of the original Movr workload by Cockroach Labs
-    """
+class Hovr:
+    """Hovr is a spin-off of the original Movr workload by Cockroach Labs"""
 
     def __init__(self, args: dict):
-
         # self.schema holds the DDL
         self.schema: str = """
             -- you can write the schema ddl here, but it's simpler to pass a .sql file

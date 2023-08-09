@@ -16,12 +16,32 @@ import urllib.parse
 import yaml
 import prometheus_client
 
-RESERVED_WORDS = ['unique', 'inverted', 'index', 'constraint',
-                  'family', 'like', 'primary', 'foreign', 'key',
-                  'create', 'table',
-                  'if', 'not', 'exists', 'null',
-                  'global', 'local', 'temporary', 'temp', 'unlogged',
-                  'visible', 'using', 'hash' 'with', 'bucket_count']
+RESERVED_WORDS = [
+    "unique",
+    "inverted",
+    "index",
+    "constraint",
+    "family",
+    "like",
+    "primary",
+    "foreign",
+    "key",
+    "create",
+    "table",
+    "if",
+    "not",
+    "exists",
+    "null",
+    "global",
+    "local",
+    "temporary",
+    "temp",
+    "unlogged",
+    "visible",
+    "using",
+    "hash" "with",
+    "bucket_count",
+]
 
 DEFAULT_ARRAY_COUNT = 3
 SUPPORTED_DBMS = ["PostgreSQL", "CockroachDB"]
@@ -31,15 +51,14 @@ logger = logging.getLogger(__name__)
 
 
 class QuietServerHandler(http.server.SimpleHTTPRequestHandler):
-    """SimpleHTTPRequestHandler that doesn't output any log
-    """
+    """SimpleHTTPRequestHandler that doesn't output any log"""
 
     def log_message(self, format, *args):
         pass
 
 
 class Stats:
-    """Print workload stats 
+    """Print workload stats
     and export the stats as Prometheus endpoints
     """
 
@@ -65,32 +84,36 @@ class Stats:
         self.cumulative_counts[action] += 1
 
         if action not in self.prom_latency:
-            self.prom_latency[action] = prometheus_client.Summary(f'latency_{action}',
-                                                                  f'Latency for transaction {action}')
+            self.prom_latency[action] = prometheus_client.Summary(
+                f"latency_{action}", f"Latency for transaction {action}"
+            )
         self.prom_latency[action].observe(measurement)
 
     # calculate the current stats this instance has collected.
     def calculate_stats(self) -> list:
-
         def get_stats_row(action: str):
             elapsed: float = time.time() - self.instantiation_time
 
             arr = np.array(self.window_stats[action])
 
-            return [action,
-                    round(elapsed, 0),
-                    self.cumulative_counts[action],
-                    round(self.cumulative_counts[action] / elapsed, 2),
-                    len(arr),
-                    round(len(arr) / self.frequency, 2),
-                    round(np.mean(arr) * 1000, 2),
-                    round(np.percentile(arr, 50) * 1000, 2),
-                    round(np.percentile(arr, 90) * 1000, 2),
-                    round(np.percentile(arr, 95) * 1000, 2),
-                    round(np.percentile(arr, 99) * 1000, 2),
-                    round(np.max(arr) * 1000, 2)]
+            return [
+                action,
+                round(elapsed, 0),
+                self.cumulative_counts[action],
+                round(self.cumulative_counts[action] / elapsed, 2),
+                len(arr),
+                round(len(arr) / self.frequency, 2),
+                round(np.mean(arr) * 1000, 2),
+                round(np.percentile(arr, 50) * 1000, 2),
+                round(np.percentile(arr, 90) * 1000, 2),
+                round(np.percentile(arr, 95) * 1000, 2),
+                round(np.percentile(arr, 99) * 1000, 2),
+                round(np.max(arr) * 1000, 2),
+            ]
 
-        return [get_stats_row(action) for action in sorted(list(self.window_stats.keys()))]
+        return [
+            get_stats_row(action) for action in sorted(list(self.window_stats.keys()))
+        ]
 
 
 def set_query_parameter(url: str, param_name: str, param_value: str):
@@ -123,10 +146,10 @@ def import_class_at_runtime(path: str):
     """
     # check if path is one of the built-in workloads
     try:
-        workload = getattr(pgworkload.utils.builtin_workloads,
-                           path.lower().capitalize())
-        logger.info(
-            f"Loading built-in workload '{path.lower().capitalize()}'")
+        workload = getattr(
+            pgworkload.utils.builtin_workloads, path.lower().capitalize()
+        )
+        logger.info(f"Loading built-in workload '{path.lower().capitalize()}'")
         return workload
     except AttributeError:
         pass
@@ -163,14 +186,13 @@ def run_transaction(conn: psycopg.Connection, op, max_retries=3):
             # This is a retry error, so we roll back the current
             # transaction and sleep for a bit before retrying. The
             # sleep time increases for each failed transaction.
-            logger.debug(f'psycopg.SerializationFailure:: {e}')
+            logger.debug(f"psycopg.SerializationFailure:: {e}")
             conn.rollback()
-            time.sleep((2 ** retry) * 0.1 * (random.random() + 0.5))
+            time.sleep((2**retry) * 0.1 * (random.random() + 0.5))
         except psycopg.Error as e:
             raise e
 
-    raise ValueError(
-        f"Transaction did not succeed after {max_retries} retries")
+    raise ValueError(f"Transaction did not succeed after {max_retries} retries")
 
 
 def get_based_name_dir(filepath: str):
@@ -182,8 +204,10 @@ def get_based_name_dir(filepath: str):
     Returns:
         str: the name of the directory, eg: /path/to/file
     """
-    return os.path.join(os.path.dirname(filepath), os.path.splitext(
-        os.path.basename(filepath))[0].lower())
+    return os.path.join(
+        os.path.dirname(filepath),
+        os.path.splitext(os.path.basename(filepath))[0].lower(),
+    )
 
 
 def get_workload_load(workload_path: str):
@@ -196,22 +220,21 @@ def get_workload_load(workload_path: str):
         (dict): the data gen definition
     """
     # find if the .yaml file exists
-    yaml_file = os.path.abspath(get_based_name_dir(workload_path) + '.yaml')
+    yaml_file = os.path.abspath(get_based_name_dir(workload_path) + ".yaml")
 
     if os.path.exists(yaml_file):
-        logger.debug(
-            'Found data generation definition YAML file %s' % yaml_file)
-        with open(yaml_file, 'r') as f:
+        logger.debug("Found data generation definition YAML file %s" % yaml_file)
+        with open(yaml_file, "r") as f:
             return yaml.safe_load(f)
     else:
         logger.debug(
-            f'YAML file {yaml_file} not found. Loading data generation definition from the \'load\' variable')
+            f"YAML file {yaml_file} not found. Loading data generation definition from the 'load' variable"
+        )
         try:
             workload = import_class_at_runtime(workload_path)
             return yaml.safe_load(workload({}).load)
         except AttributeError as e:
-            logger.warning(
-                f'{e}. Make sure self.load is a valid variable in __init__')
+            logger.warning(f"{e}. Make sure self.load is a valid variable in __init__")
             return {}
 
 
@@ -227,9 +250,8 @@ def get_new_dburl(dburl: str, db_name: str):
     """
     # craft the new dburl
     scheme, netloc, path, query_string, fragment = urllib.parse.urlsplit(dburl)
-    path = '/' + db_name
-    return urllib.parse.urlunsplit(
-        (scheme, netloc, path, query_string, fragment))
+    path = "/" + db_name
+    return urllib.parse.urlunsplit((scheme, netloc, path, query_string, fragment))
 
 
 def get_dbms(dburl: str):
@@ -264,7 +286,9 @@ def httpserver(path: str, port: int = 3000):
     os.chdir(path)
 
     try:
-        with socketserver.TCPServer(server_address=("", port), RequestHandlerClass=QuietServerHandler) as httpd:
+        with socketserver.TCPServer(
+            server_address=("", port), RequestHandlerClass=QuietServerHandler
+        ) as httpd:
             httpd.serve_forever()
     except OSError as e:
         logger.error(e)
@@ -290,6 +314,7 @@ def ddl_to_yaml(ddl: str):
     Returns:
         (str): the YAML data gen definition string
     """
+
     def get_type_and_args(datatypes: list):
         # check if it is an array
         # string array
@@ -297,140 +322,176 @@ def ddl_to_yaml(ddl: str):
         # string[]
         is_array = False
         datatypes = [x.lower() for x in datatypes]
-        if '[]' in datatypes[0] or 'array' in datatypes or '[]' in datatypes:
+        if "[]" in datatypes[0] or "array" in datatypes or "[]" in datatypes:
             is_array = True
 
-        datatype: str = datatypes[0].replace('[]', '')
+        datatype: str = datatypes[0].replace("[]", "")
 
-        if datatype.lower() in ['bool', 'boolean']:
-            return {'type': 'bool',
-                    'args': {
-                        'seed': random.random(),
-                        'null_pct': 0.0,
-                        'array': DEFAULT_ARRAY_COUNT if is_array else 0}
-                    }
+        if datatype.lower() in ["bool", "boolean"]:
+            return {
+                "type": "bool",
+                "args": {
+                    "seed": random.random(),
+                    "null_pct": 0.0,
+                    "array": DEFAULT_ARRAY_COUNT if is_array else 0,
+                },
+            }
 
-        elif datatype.lower() in ['int', 'integer', 'int2', 'int4', 'int8', 'int64', 'bigint', 'smallint']:
-            return {'type': 'integer',
-                    'args': {
-                        'min': 0,
-                        'max':  1000000,
-                        'seed': random.random(),
-                        'null_pct': 0.0,
-                        'array': DEFAULT_ARRAY_COUNT if is_array else 0}
-                    }
+        elif datatype.lower() in [
+            "int",
+            "integer",
+            "int2",
+            "int4",
+            "int8",
+            "int64",
+            "bigint",
+            "smallint",
+        ]:
+            return {
+                "type": "integer",
+                "args": {
+                    "min": 0,
+                    "max": 1000000,
+                    "seed": random.random(),
+                    "null_pct": 0.0,
+                    "array": DEFAULT_ARRAY_COUNT if is_array else 0,
+                },
+            }
 
-        elif datatype.lower() in ['string', 'char', 'character', 'varchar', 'text']:
-            return {'type': 'string',
-                    'args': {
-                        'min': 10,
-                        'max': 30,
-                        'seed': random.random(),
-                        'null_pct': 0.0,
-                        'array': DEFAULT_ARRAY_COUNT if is_array else 0}
-                    }
+        elif datatype.lower() in ["string", "char", "character", "varchar", "text"]:
+            return {
+                "type": "string",
+                "args": {
+                    "min": 10,
+                    "max": 30,
+                    "seed": random.random(),
+                    "null_pct": 0.0,
+                    "array": DEFAULT_ARRAY_COUNT if is_array else 0,
+                },
+            }
 
-        elif datatype.lower() in ['decimal', 'float', 'dec', 'numeric', 'real', 'double']:
-            return {'type': 'float',
-                    'args': {
-                        'max': 10000,
-                        'round': 2,
-                        'seed': random.random(),
-                        'null_pct': 0.0,
-                        'array': DEFAULT_ARRAY_COUNT if is_array else 0}
-                    }
+        elif datatype.lower() in [
+            "decimal",
+            "float",
+            "dec",
+            "numeric",
+            "real",
+            "double",
+        ]:
+            return {
+                "type": "float",
+                "args": {
+                    "max": 10000,
+                    "round": 2,
+                    "seed": random.random(),
+                    "null_pct": 0.0,
+                    "array": DEFAULT_ARRAY_COUNT if is_array else 0,
+                },
+            }
 
-        elif datatype.lower() in ['time', 'timetz']:
-            return {'type': 'time',
-                    'args': {
-                        'start': '07:30:00',
-                        'end': '15:30:00',
-                        'micros': False,
-                        'seed': random.random(),
-                        'null_pct': 0.0,
-                        'array': DEFAULT_ARRAY_COUNT if is_array else 0}
-                    }
+        elif datatype.lower() in ["time", "timetz"]:
+            return {
+                "type": "time",
+                "args": {
+                    "start": "07:30:00",
+                    "end": "15:30:00",
+                    "micros": False,
+                    "seed": random.random(),
+                    "null_pct": 0.0,
+                    "array": DEFAULT_ARRAY_COUNT if is_array else 0,
+                },
+            }
 
-        elif datatype.lower() in ['json', 'jsonb']:
-            return {'type': 'jsonb',
-                    'args': {
-                        'min': 10,
-                        'max': 50,
-                        'seed': random.random(),
-                        'null_pct': 0.0}
-                    }
+        elif datatype.lower() in ["json", "jsonb"]:
+            return {
+                "type": "jsonb",
+                "args": {
+                    "min": 10,
+                    "max": 50,
+                    "seed": random.random(),
+                    "null_pct": 0.0,
+                },
+            }
 
-        elif datatype.lower() == 'date':
-            return {'type': 'date',
-                    'args': {
-                        'start': '2022-01-01',
-                        'end': '2022-12-31',
-                        'format': '%Y-%m-%d',
-                        'seed': random.random(),
-                        'null_pct': 0.0,
-                        'array': DEFAULT_ARRAY_COUNT if is_array else 0}
-                    }
+        elif datatype.lower() == "date":
+            return {
+                "type": "date",
+                "args": {
+                    "start": "2022-01-01",
+                    "end": "2022-12-31",
+                    "format": "%Y-%m-%d",
+                    "seed": random.random(),
+                    "null_pct": 0.0,
+                    "array": DEFAULT_ARRAY_COUNT if is_array else 0,
+                },
+            }
 
-        elif datatype.lower() in ['timestamp', 'timestamptz']:
-            return {'type': 'timestamp',
-                    'args': {
-                        'start': '2022-01-01',
-                        'end': '2022-12-31',
-                        'format': '%Y-%m-%d %H:%M:%S.%f',
-                        'seed': random.random(),
-                        'null_pct': 0.0,
-                        'array': DEFAULT_ARRAY_COUNT if is_array else 0}
-                    }
+        elif datatype.lower() in ["timestamp", "timestamptz"]:
+            return {
+                "type": "timestamp",
+                "args": {
+                    "start": "2022-01-01",
+                    "end": "2022-12-31",
+                    "format": "%Y-%m-%d %H:%M:%S.%f",
+                    "seed": random.random(),
+                    "null_pct": 0.0,
+                    "array": DEFAULT_ARRAY_COUNT if is_array else 0,
+                },
+            }
 
-        elif datatype.lower() == 'uuid':
-            return {'type': 'UUIDv4',
-                    'args': {
-                        'seed': random.random(),
-                        'null_pct': 0,
-                        'array': DEFAULT_ARRAY_COUNT if is_array else 0}
-                    }
+        elif datatype.lower() == "uuid":
+            return {
+                "type": "UUIDv4",
+                "args": {
+                    "seed": random.random(),
+                    "null_pct": 0,
+                    "array": DEFAULT_ARRAY_COUNT if is_array else 0,
+                },
+            }
 
         else:
             raise ValueError(f"Data type not implemented: '{datatype}'")
 
-    def get_table_name_and_table_list(create_table_stmt: str, sort_by: list, count: int = 1000000):
-        p1 = create_table_stmt.find('(')
-        p2 = create_table_stmt.rfind(')')
+    def get_table_name_and_table_list(
+        create_table_stmt: str, sort_by: list, count: int = 1000000
+    ):
+        p1 = create_table_stmt.find("(")
+        p2 = create_table_stmt.rfind(")")
 
         # find table name (before parenthesis part)
         for i in create_table_stmt[:p1].split():
             if i.lower() not in RESERVED_WORDS:
-                table_name = i.replace('.', '__')
+                table_name = i.replace(".", "__")
                 break
 
         # extract column definitions (within parentheses part)
         # eg:
         #   id uuid primary key
         #   s string(30)
-        col_def_raw = create_table_stmt[p1+1:p2]
+        col_def_raw = create_table_stmt[p1 + 1 : p2]
 
         # remove slices delimited by parenthesis
         # eg: from id 'sting(30)' to 'id string'
         # this is important as within parenthesis we might find commas
         # and we need to split on commas later
         within_brackets = False
-        col_def = ''
+        col_def = ""
         for i in col_def_raw:
-            if i == '(':
+            if i == "(":
                 within_brackets = True
                 continue
-            if i == ')':
+            if i == ")":
                 within_brackets = False
                 continue
             if not within_brackets:
                 col_def += i
 
-        col_def = [x.strip().lower() for x in col_def.split(',')]
+        col_def = [x.strip().lower() for x in col_def.split(",")]
 
         ll = []
         for x in col_def:
             # remove commented lines
-            if not x.startswith('--'):
+            if not x.startswith("--"):
                 col_name_and_type = x.strip().split(" ")[:3]
                 # remove those lines that are not column definition,
                 # like CONSTRAINT, INDEX, FAMILY, etc..
@@ -438,12 +499,12 @@ def ddl_to_yaml(ddl: str):
                     ll.append(col_name_and_type)
 
         table_list = []
-        table_list.append({'count': count})
-        table_list[0]['sort-by'] = sort_by
-        table_list[0]['columns'] = {}
+        table_list.append({"count": count})
+        table_list[0]["sort-by"] = sort_by
+        table_list[0]["columns"] = {}
 
         for x in ll:
-            table_list[0]['columns'][x[0]] = get_type_and_args(x[1:])
+            table_list[0]["columns"][x[0]] = get_type_and_args(x[1:])
 
         return table_name, table_list
 
@@ -458,18 +519,18 @@ def ddl_to_yaml(ddl: str):
         """
 
         # separate input into a 'create table' stmts list
-        stmts = ' '.join(x.lower() for x in ddl.split())
+        stmts = " ".join(x.lower() for x in ddl.split())
 
         # strip whitespace and remove empty items
-        stmts: list = [x.strip() for x in stmts.split(';') if x != '']
+        stmts: list = [x.strip() for x in stmts.split(";") if x != ""]
 
         # keep only string that start with 'create' and
         # have word 'table' between beginning and the first open parenthesis
         create_table_stmts = []
         for i in stmts:
-            p1 = i.find('(')
-            if i.startswith('create'):
-                if 'table' in i[:p1].lower():
+            p1 = i.find("(")
+            if i.startswith("create"):
+                if "table" in i[:p1].lower():
                     create_table_stmts.append(i)
 
         return create_table_stmts
@@ -479,7 +540,8 @@ def ddl_to_yaml(ddl: str):
     d = {}
     for x in stmts:
         table_name, table_list = get_table_name_and_table_list(
-            x, count=1000, sort_by=[])
+            x, count=1000, sort_by=[]
+        )
         d[table_name] = table_list
 
     return yaml.dump(d, default_flow_style=False, sort_keys=False)
@@ -509,15 +571,19 @@ def get_threads_per_proc(procs: int, threads: int):
     return l
 
 
-def get_import_stmt(csv_files: list, table_name: str,
-                    http_server_hostname: str = 'myhost', http_server_port: str = '3000'):
-
-    csv_data = ''
+def get_import_stmt(
+    csv_files: list,
+    table_name: str,
+    http_server_hostname: str = "myhost",
+    http_server_port: str = "3000",
+):
+    csv_data = ""
     for x in csv_files:
-        csv_data += "'http://%s:%s/%s'," % (
-            http_server_hostname, http_server_port, x)
+        csv_data += "'http://%s:%s/%s'," % (http_server_hostname, http_server_port, x)
 
-    stmt = (
-        "IMPORT INTO %s CSV DATA (%s) WITH delimiter = e'\\t', nullif = '';" % (table_name, csv_data[:-1]))
+    stmt = "IMPORT INTO %s CSV DATA (%s) WITH delimiter = e'\\t', nullif = '';" % (
+        table_name,
+        csv_data[:-1],
+    )
 
     return stmt

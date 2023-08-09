@@ -66,10 +66,10 @@ Init the **Bank** workload.
 
 ```bash
 # CockroachDB
-pgworkload init -w workloads/bank.py -c 8 --url 'postgres://localhost:26257/postgres?sslmode=disable'
+pgworkload init -w workloads/bank.py --url 'postgres://root@localhost:26257/postgres?sslmode=disable'
 
 # PostgreSQL
-pgworkload init --w workloads/bank.py -c 8 --url 'postgres://localhost:5432/postgres?sslmode=disable'
+pgworkload init --w workloads/bank.py --url 'postgres://root@localhost:5432/postgres?sslmode=disable'
 ```
 
 You should see something like below
@@ -131,7 +131,7 @@ There are many built-in options.
 Check them out with
 
 ```bash
-pgworkload -h
+pgworkload --help
 ```
 
 ## Concurrency - processes and threads
@@ -182,7 +182,7 @@ WHERE id = 1234;
 Run **Querybench** like this:
 
 ```bash
-pgworkload run --workload querybench --args mystmts.sql --url <conn-string>
+pgworkload run --builtin-workload Querybench --args mystmts.sql --url <conn-string>
 ```
 
 ### Hovr
