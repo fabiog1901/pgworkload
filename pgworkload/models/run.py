@@ -110,6 +110,12 @@ def run(
 
     signal.signal(signal.SIGINT, signal_handler)
 
+    disable_stats = False
+    
+    if frequency == 0:
+        disable_stats = True
+        frequency = 10 
+        
     stats = pgworkload.utils.util.Stats(frequency, prom_port)
 
     if iterations:
@@ -143,6 +149,7 @@ def run(
                     iterations,
                     duration,
                     conn_duration,
+                    disable_stats,
                 ),
             )
         )
@@ -204,7 +211,7 @@ def worker(
     iterations: int,
     duration: int,
     conn_duration: int,
-    threads: list = [],
+    disable_stats: bool,
 ):
     """Process worker function to run the workload in a multiprocessing env
 
@@ -220,7 +227,7 @@ def worker(
         iterations (int): count of workload iteration before returning
         duration (int): seconds before returning
         conn_duration (int): seconds before restarting the database connection
-        threads (list): the list of threads to wait to finish before returning
+        disable_stats: (bool): flag to send or not stats back to the mainthread
     """
     logger.setLevel(log_level)
 
@@ -243,7 +250,7 @@ def worker(
                 iterations,
                 duration,
                 conn_duration,
-                [],
+                disable_stats,
             ),
         )
         thread.start()
@@ -324,11 +331,11 @@ def worker(
                         pgworkload.utils.util.run_transaction(
                             conn, lambda conn: txn(conn)
                         )
-                        if not q.full():
+                        if not q.full() and not disable_stats:
                             q.put((txn.__name__, time.time() - start))
 
                     c += 1
-                    if not q.full():
+                    if not q.full() and not disable_stats:
                         q.put(("__cycle__", time.time() - cycle_start))
 
         # catch any error, pass that error to the MainProcess

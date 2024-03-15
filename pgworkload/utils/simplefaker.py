@@ -25,8 +25,8 @@ class SimpleFaker:
             self.null_pct: float = 0.0 if null_pct is None else null_pct
             self.rng: random.Random = random.Random(seed)
 
-    class Costant(Abc):
-        """Iterator that counts upward forever."""
+    class Constant(Abc):
+        """Iterator always yields the same value."""
 
         def __init__(self, value: str, seed: float, null_pct: float):
             super().__init__(seed, null_pct, 0)
@@ -361,6 +361,27 @@ class SimpleFaker:
             l.append(rows_to_process + rows_left_over)
             return l
 
+    """
+    the seed in the yaml file `1` is used to create a rng used to 
+    generate the seed number for each SimpleFaker class
+    
+    >>> rng = random.Random(1)
+    >>> seed1 = rng.random()
+    >>> seed2 = rng.random()
+    >>> 
+    >>> 
+    >>> rng1 = random.Random(seed1)
+    >>> rng1.randint(0, 1000000)
+    948735
+    >>> rng1.randint(0, 1000000)
+    614390
+    >>> 
+    >>> rng2 = random.Random(seed2)
+    >>> rng2.randint(0, 1000000)
+    140545
+    >>> rng2.randint(0, 1000000)
+    157597
+    """
     def generate(
         self,
         load: dict,
@@ -467,7 +488,7 @@ class SimpleFaker:
         weights = args.get("weights")
         cum_weights = args.get("cum_weights")
 
-        # costant
+        # constant
         value = args.get("value")
 
         # all types
@@ -521,8 +542,8 @@ class SimpleFaker:
                 SimpleFaker.Date(start, end, format, seed, null_pct, array)
                 for seed in seeds
             ]
-        elif type == "costant":
-            return [SimpleFaker.Costant(value, seed, null_pct) for seed in seeds]
+        elif type == "constant":
+            return [SimpleFaker.Constant(value, seed, null_pct) for seed in seeds]
         elif type == "sequence":
             div = int(count / exec_threads)
             return [SimpleFaker.Sequence(div * x + start) for x in range(exec_threads)]

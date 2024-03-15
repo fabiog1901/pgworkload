@@ -146,7 +146,7 @@ def run(
         help="Unset autocommit in the connections.",
     ),
     frequency: int = typer.Option(
-        10, "-s", "--stats-frequency", help="How often to display the stats in seconds."
+        10, "-s", "--stats-frequency", help="How often to display the stats in seconds. Set 0 to disable"
     ),
     prom_port: int = typer.Option(
         26260, "-p", "--port", help="The port of the Prometheus server."
@@ -200,7 +200,7 @@ def init(
     db: str = typer.Option(
         None, show_default=False, help="Override the default DB name."
     ),
-    http_server_hostname: int = Param.HTTPServerHostName,
+    http_server_hostname: str = Param.HTTPServerHostName,
     http_server_port: int = Param.HTTPServerPort,
     args: str = Param.Args,
     log_level: LogLevel = Param.LogLevel,
@@ -262,7 +262,7 @@ def util_csv(
     ),
     procs: int = Param.Procs,
     csv_max_rows: int = Param.CSVMaxRows,
-    http_server_hostname: int = Param.HTTPServerHostName,
+    http_server_hostname: str = Param.HTTPServerHostName,
     http_server_port: int = Param.HTTPServerPort,
     table_name: str = typer.Option(
         "table_name",
