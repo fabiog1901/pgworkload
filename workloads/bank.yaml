@@ -7,8 +7,8 @@ ref_data:
         type: sequence
         args: 
           start: 0
-      my_costant:
-        type: costant
+      my_constant:
+        type: constant
         args:
           value: simplefaker
       my_uuid:
