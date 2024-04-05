@@ -171,7 +171,11 @@ class SimpleFaker:
             # make translation table from 0..255 to 97..122
             self.tbl = bytes.maketrans(
                 bytearray(range(256)),
-                bytearray([ord(b"a") + b % 26 for b in range(256)]),
+                bytearray(
+                    [ord(b"a") + b % 26 for b in range(113)]
+                    + [ord(b"0") + b % 10 for b in range(30)]
+                    + [ord(b"A") + b % 26 for b in range(113)]
+                ),
             )
 
         # generate random bytes and translate them to lowercase ascii
@@ -382,6 +386,7 @@ class SimpleFaker:
     >>> rng2.randint(0, 1000000)
     157597
     """
+
     def generate(
         self,
         load: dict,
