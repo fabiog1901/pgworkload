@@ -146,7 +146,10 @@ def run(
         help="Unset autocommit in the connections.",
     ),
     frequency: int = typer.Option(
-        10, "-s", "--stats-frequency", help="How often to display the stats in seconds. Set 0 to disable"
+        10,
+        "-s",
+        "--stats-frequency",
+        help="How often to display the stats in seconds. Set 0 to disable",
     ),
     prom_port: int = typer.Option(
         26260, "-p", "--port", help="The port of the Prometheus server."
@@ -328,6 +331,43 @@ def util_yaml(
     ),
 ):
     pgworkload.models.util.util_yaml(input=input, output=output)
+
+
+@util_app.command(
+    "merge",
+    epilog=EPILOG,
+    no_args_is_help=True,
+    help="Merge multiple sorted CSV files into 1+ files.",
+)
+def util_merge(
+    input: Optional[Path] = typer.Option(
+        ...,
+        "--input",
+        "-i",
+        help="Directory of files to be merged",
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        writable=False,
+        readable=True,
+        resolve_path=True,
+    ),
+    output: Optional[Path] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        show_default=False,
+        help="Output filepath. Defaults to <input>.merged.",
+        exists=False,
+        file_okay=True,
+        dir_okay=True,
+        writable=False,
+        readable=True,
+        resolve_path=True,
+    ),
+    csv_max_rows: int = Param.CSVMaxRows,
+):
+    pgworkload.models.util.util_merge(input, output, csv_max_rows)
 
 
 def __validate(procs: int, dburl: str, app_name: str, args: str, workload_path: str):

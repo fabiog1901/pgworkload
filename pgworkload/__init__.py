@@ -13,7 +13,7 @@ logger = logging.getLogger(__package__)
 logger.setLevel(logging.INFO)
 sh = logging.StreamHandler()
 formatter = logging.Formatter(
-    "%(asctime)s [%(levelname)s] (%(processName)s %(process)d %(threadName)s) %(module)s: - %(message)s"
+    "%(asctime)s [%(levelname)s] (%(processName)s %(process)d %(threadName)s) %(module)s: %(message)s"
 )
 sh.setFormatter(formatter)
 logger.addHandler(sh)
