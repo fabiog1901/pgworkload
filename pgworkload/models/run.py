@@ -111,11 +111,11 @@ def run(
     signal.signal(signal.SIGINT, signal_handler)
 
     disable_stats = False
-    
+
     if frequency == 0:
         disable_stats = True
-        frequency = 10 
-        
+        frequency = 10
+
     stats = pgworkload.utils.util.Stats(frequency, prom_port)
 
     if iterations:

@@ -94,9 +94,7 @@ def util_yaml(input: str, output: str):
 
 
 def util_merge(input_dir: str, output_dir: str, csv_max_rows: int):
-
     class Merge:
-
         def __init__(self, input_dir: str, output_dir: str, csv_max_rows: int):
             # input CSV files - it assumes files are already sorted
             files = os.listdir(input_dir)
@@ -170,7 +168,6 @@ def util_merge(input_dir: str, output_dir: str, csv_max_rows: int):
                 logger.error("Excepton in replenish_queue: ", e)
 
         def write_to_csv(self, v: str):
-
             if self.C >= self.CSV_MAX_ROWS:
                 self.output.close()
                 self.COUNTER += 1
