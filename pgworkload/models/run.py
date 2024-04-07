@@ -2,7 +2,7 @@
 
 import logging
 import multiprocessing as mp
-import pgworkload.utils.util
+import pgworkload.utils.common
 import psycopg
 import queue
 import random
@@ -104,7 +104,7 @@ def run(
 
     concurrency = conc
 
-    workload = pgworkload.utils.util.import_class_at_runtime(
+    workload = pgworkload.utils.common.import_class_at_runtime(
         workload_path if workload_path else builtin_workload
     )
 
@@ -116,7 +116,7 @@ def run(
         disable_stats = True
         frequency = 10
 
-    stats = pgworkload.utils.util.Stats(frequency, prom_port)
+    stats = pgworkload.utils.common.Stats(frequency, prom_port)
 
     if iterations:
         iterations = iterations // concurrency
@@ -127,7 +127,7 @@ def run(
 
     c = 0
 
-    threads_per_proc = pgworkload.utils.util.get_threads_per_proc(procs, conc)
+    threads_per_proc = pgworkload.utils.common.get_threads_per_proc(procs, conc)
     ramp_interval = int(ramp / len(threads_per_proc))
 
     processes: list[mp.Process] = []
@@ -328,7 +328,7 @@ def worker(
                     cycle_start = time.time()
                     for txn in w.run():
                         start = time.time()
-                        pgworkload.utils.util.run_transaction(
+                        pgworkload.utils.common.run_transaction(
                             conn, lambda conn: txn(conn)
                         )
                         if not q.full() and not disable_stats:

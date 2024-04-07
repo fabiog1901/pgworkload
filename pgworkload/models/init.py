@@ -5,7 +5,7 @@ import logging
 import multiprocessing as mp
 import os
 import pgworkload.utils.simplefaker
-import pgworkload.utils.util
+import pgworkload.utils.common
 import psycopg
 import sys
 
@@ -41,7 +41,7 @@ def init(
 
     # PG or CRDB?
     try:
-        dbms: str = pgworkload.utils.util.get_dbms(dburl)
+        dbms: str = pgworkload.utils.common.get_dbms(dburl)
     except ValueError as e:
         logger.error(e)
         sys.exit(1)
@@ -62,12 +62,12 @@ def init(
         __init_generate_data(procs, workload_path, dbms, csv_max_rows)
 
     # PART 3 - IMPORT THE DATA
-    dburl = pgworkload.utils.util.get_new_dburl(dburl, db)
+    dburl = pgworkload.utils.common.get_new_dburl(dburl, db)
     if skip_import:
         logger.debug("Skipping init_import_data")
     else:
         if not http_server_hostname:
-            http_server_hostname = pgworkload.utils.util.get_hostname()
+            http_server_hostname = pgworkload.utils.common.get_hostname()
             logger.debug(f"Hostname identified as: '{http_server_hostname}'")
 
         __init_import_data(
@@ -76,7 +76,7 @@ def init(
 
     # PART 4 - RUN WORKLOAD INIT
     logger.debug("Running workload.init()")
-    workload = pgworkload.utils.util.import_class_at_runtime(workload_path)
+    workload = pgworkload.utils.common.import_class_at_runtime(workload_path)
     try:
         with psycopg.connect(dburl, autocommit=True) as conn:
             workload(args).init(conn)
@@ -147,7 +147,7 @@ def __init_create_schema(
         logger.error("Exception: %s" % (e))
         sys.exit(1)
 
-    dburl = pgworkload.utils.util.get_new_dburl(dburl, db_name)
+    dburl = pgworkload.utils.common.get_new_dburl(dburl, db_name)
 
     # now that we've created the database, connect to that database
     # and load the schema, which can be in a <workload>.sql file
@@ -155,7 +155,7 @@ def __init_create_schema(
 
     # find if the .sql file exists
     schema_sql_file = os.path.abspath(
-        pgworkload.utils.util.get_based_name_dir(workload_path) + ".sql"
+        pgworkload.utils.common.get_based_name_dir(workload_path) + ".sql"
     )
 
     if os.path.exists(path=schema_sql_file):
@@ -167,7 +167,9 @@ def __init_create_schema(
             f"Schema file {schema_sql_file} not found. Loading schema from the 'schema' variable"
         )
         try:
-            workload = pgworkload.utils.util.import_class_at_runtime(path=workload_path)
+            workload = pgworkload.utils.common.import_class_at_runtime(
+                path=workload_path
+            )
             schema = workload({}).schema
         except AttributeError as e:
             logger.error(f"{e}. Make sure self.schema is a valid variable in __init__")
@@ -196,7 +198,7 @@ def __init_generate_data(procs: int, workload_path: str, dbms: str, csv_max_rows
     logger.debug("Running init_generate_data")
     # description of how to generate the data is in workload variable self.load
 
-    load = pgworkload.utils.util.get_workload_load(workload_path)
+    load = pgworkload.utils.common.get_workload_load(workload_path)
     if not load:
         logger.info(
             "Data generation definition file (.yaml) or variable (self.load) not defined. Skipping"
@@ -204,7 +206,7 @@ def __init_generate_data(procs: int, workload_path: str, dbms: str, csv_max_rows
         return
 
     # get the dirname to put the csv files
-    csv_dir: str = pgworkload.utils.util.get_based_name_dir(workload_path)
+    csv_dir: str = pgworkload.utils.common.get_based_name_dir(workload_path)
 
     # backup the current directory as to not override
     if os.path.isdir(csv_dir):
@@ -242,12 +244,12 @@ def __init_import_data(
     """
     logger.debug("Running init_import_data")
 
-    csv_dir = pgworkload.utils.util.get_based_name_dir(workload_path)
-    load = pgworkload.utils.util.get_workload_load(workload_path)
+    csv_dir = pgworkload.utils.common.get_based_name_dir(workload_path)
+    load = pgworkload.utils.common.get_workload_load(workload_path)
 
     # Start the http server in a new Process
     mp.Process(
-        target=pgworkload.utils.util.httpserver, args=(csv_dir, 3000), daemon=True
+        target=pgworkload.utils.common.httpserver, args=(csv_dir, 3000), daemon=True
     ).start()
 
     if os.path.isdir(csv_dir):
@@ -279,7 +281,7 @@ def __init_import_data(
                     # we parallelize imports
                     for chunk in chunked_list:
                         if dbms == "CockroachDB":
-                            stmt = pgworkload.utils.util.get_import_stmt(
+                            stmt = pgworkload.utils.common.get_import_stmt(
                                 chunk,
                                 table.replace("__", "."),
                                 http_server_hostname,

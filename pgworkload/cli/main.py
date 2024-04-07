@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+from pgworkload.cli.dep import Param, EPILOG
 from .. import __version__
 from enum import Enum
 from pathlib import Path
@@ -7,18 +8,17 @@ from typing import Optional
 import json
 import logging
 import os
+import pgworkload.cli.util
 import pgworkload.models.init
 import pgworkload.models.run
 import pgworkload.models.util
-import pgworkload.utils.util
+import pgworkload.utils.common
 import platform
 import re
 import sys
 import typer
 import yaml
 
-
-EPILOG = "GitHub: <https://github.com/fabiog1901/pgworkload>"
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +28,8 @@ app = typer.Typer(
     help=f"pgworkload v{__version__}: Workload utility for the PostgreSQL protocol.",
 )
 
-util_app = typer.Typer(
-    epilog=EPILOG,
-    no_args_is_help=True,
-    help="Generate YAML data generation files and CSV datasets.",
-)
-app.add_typer(util_app, name="util")
 
+app.add_typer(pgworkload.cli.util.app, name="util")
 
 version: bool = typer.Option(True)
 
@@ -44,60 +39,6 @@ class LogLevel(str, Enum):
     info = "info"
     warning = "warning"
     error = "error"
-
-
-class Param:
-    LogLevel = typer.Option(
-        "info", "--log-level", "-l", show_choices=True, help="Set the logging level."
-    )
-
-    WorkloadPath = typer.Option(
-        None,
-        "--workload",
-        "-w",
-        help="Filepath to the workload module.",
-        exists=True,
-        file_okay=True,
-        dir_okay=False,
-        writable=False,
-        readable=True,
-        resolve_path=True,
-    )
-
-    Procs = typer.Option(
-        None,
-        "--procs",
-        "-x",
-        help="Number of processes to spawn. Defaults to <system-cpu-count>.",
-        show_default=False,
-    )
-
-    DBUrl = typer.Option(
-        "postgres://root@localhost:26257/postgres?sslmode=disable",
-        "--url",
-        help="The connection string to the database.",
-    )
-
-    Args = typer.Option(
-        None, help="JSON string, or filepath to a JSON/YAML file, to pass to Workload."
-    )
-
-    HTTPServerPort = typer.Option(
-        3000,
-        "-p",
-        "--port",
-        help="The port of the http server that servers the CSV files.",
-    )
-
-    HTTPServerHostName = typer.Option(
-        None,
-        "-n",
-        "--hostname",
-        show_default=False,
-        help="The hostname of the http server that serves the CSV files.",
-    )
-
-    CSVMaxRows = typer.Option(100000, help="Max count of rows per resulting CSV file.")
 
 
 @app.command(help="Run the workload.", epilog=EPILOG, no_args_is_help=True)
@@ -231,145 +172,6 @@ def init(
     )
 
 
-@util_app.command(
-    "csv",
-    epilog=EPILOG,
-    no_args_is_help=True,
-    help="Generate CSV files from a YAML data generation file.",
-)
-def util_csv(
-    input: Optional[Path] = typer.Option(
-        ...,
-        "--input",
-        "-i",
-        help="Filepath to the YAML data generation file.",
-        exists=True,
-        file_okay=True,
-        dir_okay=False,
-        writable=False,
-        readable=True,
-        resolve_path=True,
-    ),
-    output: Optional[Path] = typer.Option(
-        None,
-        "--output",
-        "-o",
-        show_default=False,
-        help="Output directory for the CSV files. Defaults to <input-basename>.",
-        exists=False,
-        file_okay=False,
-        dir_okay=True,
-        writable=False,
-        readable=True,
-        resolve_path=True,
-    ),
-    procs: int = Param.Procs,
-    csv_max_rows: int = Param.CSVMaxRows,
-    http_server_hostname: str = Param.HTTPServerHostName,
-    http_server_port: int = Param.HTTPServerPort,
-    table_name: str = typer.Option(
-        "table_name",
-        "--table-name",
-        "-t",
-        help="The table name used in the import statement.",
-    ),
-    compression: str = typer.Option(
-        None, "-c", "--compression", help="The compression format."
-    ),
-    delimiter: str = typer.Option(
-        "\t",
-        "-d",
-        "--delimiter",
-        help='The delimeter char to use for the CSV files. Defaults to "tab".',
-        show_default=False,
-    ),
-):
-    pgworkload.models.util.util_csv(
-        input=input,
-        output=output,
-        compression=compression,
-        procs=procs,
-        csv_max_rows=csv_max_rows,
-        delimiter=delimiter,
-        http_server_hostname=http_server_hostname,
-        http_server_port=http_server_port,
-        table_name=table_name,
-    )
-
-
-@util_app.command(
-    "yaml",
-    epilog=EPILOG,
-    no_args_is_help=True,
-    help="Generate YAML data generation file from a DDL SQL file.",
-)
-def util_yaml(
-    input: Optional[Path] = typer.Option(
-        ...,
-        "--input",
-        "-i",
-        help="Filepath to the DDL SQL file.",
-        exists=True,
-        file_okay=True,
-        dir_okay=False,
-        writable=False,
-        readable=True,
-        resolve_path=True,
-    ),
-    output: Optional[Path] = typer.Option(
-        None,
-        "--output",
-        "-o",
-        show_default=False,
-        help="Output filepath. Defaults to <input-basename>.yaml.",
-        exists=False,
-        file_okay=True,
-        dir_okay=True,
-        writable=False,
-        readable=True,
-        resolve_path=True,
-    ),
-):
-    pgworkload.models.util.util_yaml(input=input, output=output)
-
-
-@util_app.command(
-    "merge",
-    epilog=EPILOG,
-    no_args_is_help=True,
-    help="Merge multiple sorted CSV files into 1+ files.",
-)
-def util_merge(
-    input: Optional[Path] = typer.Option(
-        ...,
-        "--input",
-        "-i",
-        help="Directory of files to be merged",
-        exists=True,
-        file_okay=False,
-        dir_okay=True,
-        writable=False,
-        readable=True,
-        resolve_path=True,
-    ),
-    output: Optional[Path] = typer.Option(
-        None,
-        "--output",
-        "-o",
-        show_default=False,
-        help="Output filepath. Defaults to <input>.merged.",
-        exists=False,
-        file_okay=True,
-        dir_okay=True,
-        writable=False,
-        readable=True,
-        resolve_path=True,
-    ),
-    csv_max_rows: int = Param.CSVMaxRows,
-):
-    pgworkload.models.util.util_merge(input, output, csv_max_rows)
-
-
 def __validate(procs: int, dburl: str, app_name: str, args: str, workload_path: str):
     """Performs pgworkload initialization steps
 
@@ -380,7 +182,7 @@ def __validate(procs: int, dburl: str, app_name: str, args: str, workload_path: 
         argparse.Namespace: updated args
     """
 
-    workload = pgworkload.utils.util.import_class_at_runtime(workload_path)
+    workload = pgworkload.utils.common.import_class_at_runtime(workload_path)
 
     if not procs:
         procs = os.cpu_count()
@@ -391,7 +193,7 @@ def __validate(procs: int, dburl: str, app_name: str, args: str, workload_path: 
         )
         sys.exit(1)
 
-    dburl = pgworkload.utils.util.set_query_parameter(
+    dburl = pgworkload.utils.common.set_query_parameter(
         url=dburl,
         param_name="application_name",
         param_value=app_name if app_name else workload.__name__,

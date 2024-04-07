@@ -5,7 +5,7 @@ import datetime as dt
 import logging
 import os
 import pgworkload.utils.simplefaker
-import pgworkload.utils.util
+import pgworkload.utils.common
 import sys
 import yaml
 
@@ -31,7 +31,7 @@ def util_csv(
         load = yaml.safe_load(f.read())
 
     if not output:
-        output_dir = pgworkload.utils.util.get_based_name_dir(input)
+        output_dir = pgworkload.utils.common.get_based_name_dir(input)
     else:
         output_dir = output
 
@@ -62,10 +62,10 @@ def util_csv(
     csv_files = os.listdir(output_dir)
 
     if not http_server_hostname:
-        http_server_hostname = pgworkload.utils.util.get_hostname()
+        http_server_hostname = pgworkload.utils.common.get_hostname()
         logger.debug(f"Hostname identified as: '{http_server_hostname}'")
 
-    stmt = pgworkload.utils.util.get_import_stmt(
+    stmt = pgworkload.utils.common.get_import_stmt(
         csv_files, table_name, http_server_hostname, http_server_port
     )
 
@@ -82,7 +82,7 @@ def util_yaml(input: str, output: str):
         ddl = f.read()
 
     if not output:
-        output = pgworkload.utils.util.get_based_name_dir(input) + ".yaml"
+        output = pgworkload.utils.common.get_based_name_dir(input) + ".yaml"
 
     # backup the current file as to not override
     if os.path.exists(output):
@@ -90,7 +90,7 @@ def util_yaml(input: str, output: str):
 
     # create new file
     with open(output, "w") as f:
-        f.write(pgworkload.utils.util.ddl_to_yaml(ddl))
+        f.write(pgworkload.utils.common.ddl_to_yaml(ddl))
 
 
 def util_merge(input_dir: str, output_dir: str, csv_max_rows: int):
