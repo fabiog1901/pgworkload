@@ -373,6 +373,8 @@ def ddl_to_yaml(ddl: str):
         elif datatype.lower() in [
             "decimal",
             "float",
+            "float4",
+            "float8",
             "dec",
             "numeric",
             "real",
@@ -474,20 +476,21 @@ def ddl_to_yaml(ddl: str):
         # eg: from id 'sting(30)' to 'id string'
         # this is important as within parenthesis we might find commas
         # and we need to split on commas later
-        within_brackets = False
+        within_brackets = 0
         col_def = ""
         for i in col_def_raw:
             if i == "(":
-                within_brackets = True
+                within_brackets += 1
                 continue
             if i == ")":
-                within_brackets = False
+                within_brackets -= 1
                 continue
-            if not within_brackets:
+            if within_brackets == 0:
                 col_def += i
 
         col_def = [x.strip().lower() for x in col_def.split(",")]
 
+        
         ll = []
         for x in col_def:
             # remove commented lines
