@@ -15,8 +15,9 @@ import logging.handlers
 import tabulate
 
 DEFAULT_SLEEP = 3
+MAX_RETRIES = 3
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("pgworkload")
 
 HEADERS: list = [
     "id",
@@ -328,10 +329,16 @@ def worker(
                     cycle_start = time.time()
                     for txn in w.run():
                         start = time.time()
-                        pgworkload.utils.common.run_transaction(
-                            conn, lambda conn: txn(conn)
+                        retries = pgworkload.utils.common.run_transaction(
+                            conn, lambda conn: txn(conn), max_retries=MAX_RETRIES
                         )
-                        if not q.full() and not disable_stats:
+
+                        # record how many retries there were, if any
+                        for _ in range(retries):
+                            q.put(("40001", 0))
+
+                        # if retries matches max_retries, then it's a total failure and we don't record the txn time
+                        if not q.full() and not disable_stats and retries < MAX_RETRIES:
                             q.put((txn.__name__, time.time() - start))
 
                     c += 1

@@ -7,7 +7,7 @@ import pandas as pd
 import uuid
 import random
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("pgworkload")
 
 
 class SimpleFaker:

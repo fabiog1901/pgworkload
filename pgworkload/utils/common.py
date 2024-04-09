@@ -47,7 +47,7 @@ DEFAULT_ARRAY_COUNT = 3
 SUPPORTED_DBMS = ["PostgreSQL", "CockroachDB"]
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("pgworkload")
 
 
 class QuietServerHandler(http.server.SimpleHTTPRequestHandler):
@@ -85,7 +85,8 @@ class Stats:
 
         if action not in self.prom_latency:
             self.prom_latency[action] = prometheus_client.Summary(
-                f"latency_{action}", f"Latency for transaction {action}"
+                f"latency_{action.replace(' ', '')}",
+                f"Latency for transaction {action}",
             )
         self.prom_latency[action].observe(measurement)
 
@@ -181,7 +182,7 @@ def run_transaction(conn: psycopg.Connection, op, max_retries=3):
             op(conn)
             # If we reach this point, we were able to commit, so we break
             # from the retry loop.
-            return
+            return retry - 1
         except psycopg.errors.SerializationFailure as e:
             # This is a retry error, so we roll back the current
             # transaction and sleep for a bit before retrying. The
@@ -192,7 +193,8 @@ def run_transaction(conn: psycopg.Connection, op, max_retries=3):
         except psycopg.Error as e:
             raise e
 
-    raise ValueError(f"Transaction did not succeed after {max_retries} retries")
+    logger.debug(f"Transaction did not succeed after {max_retries} retries")
+    return retry
 
 
 def get_based_name_dir(filepath: str):
@@ -315,24 +317,36 @@ def ddl_to_yaml(ddl: str):
         (str): the YAML data gen definition string
     """
 
-    def get_type_and_args(datatypes: list):
+    def get_type_and_args(col_type_and_args: list):
+        is_not_null = False
+        if "not" in col_type_and_args and "null" in col_type_and_args:
+            is_not_null = True
         # check if it is an array
         # string array
         # string []
         # string[]
         is_array = False
-        datatypes = [x.lower() for x in datatypes]
-        if "[]" in datatypes[0] or "array" in datatypes or "[]" in datatypes:
+        col_type_and_args = [x.lower() for x in col_type_and_args]
+        if (
+            "[]" in col_type_and_args[0]
+            or "array" in col_type_and_args
+            or "[]" in col_type_and_args
+        ):
             is_array = True
 
-        datatype: str = datatypes[0].replace("[]", "")
+        datatype: str = col_type_and_args[0].replace("[]", "")
+        arg = None
+        if len(col_type_and_args) > 1:
+            arg = col_type_and_args[1:]
 
         if datatype.lower() in ["bool", "boolean"]:
             return {
                 "type": "bool",
                 "args": {
                     "seed": random.random(),
-                    "null_pct": 0.0,
+                    "null_pct": 0.0
+                    if is_not_null
+                    else round(random.randint(20, 80) / 100, 2),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
             }
@@ -353,19 +367,29 @@ def ddl_to_yaml(ddl: str):
                     "min": 0,
                     "max": 1000000,
                     "seed": random.random(),
-                    "null_pct": 0.0,
+                    "null_pct": 0.0
+                    if is_not_null
+                    else round(random.randint(20, 80) / 100, 2),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
             }
 
         elif datatype.lower() in ["string", "char", "character", "varchar", "text"]:
+            _min = 10
+            _max = 30
+            if arg and arg[0].isdigit():
+                _min = int(arg[0]) // 3
+                _max = int(arg[0])
+
             return {
                 "type": "string",
                 "args": {
-                    "min": 10,
-                    "max": 30,
+                    "min": _min,
+                    "max": _max,
                     "seed": random.random(),
-                    "null_pct": 0.0,
+                    "null_pct": 0.0
+                    if is_not_null
+                    else round(random.randint(20, 80) / 100, 2),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
             }
@@ -380,13 +404,28 @@ def ddl_to_yaml(ddl: str):
             "real",
             "double",
         ]:
+            _max = 10000000
+            _round = 2
+            if arg:
+                if ":" in arg[0]:
+                    prec, scale = arg[0].split(":")
+                    if prec:
+                        _max = 10 ** int(prec)
+                    if scale:
+                        _round = int(scale)
+                elif arg[0].isdigit():
+                    _max = 10 ** int(arg[0])
+                    _round = 0
+
             return {
                 "type": "float",
                 "args": {
-                    "max": 10000,
-                    "round": 2,
+                    "max": _max,
+                    "round": _round,
                     "seed": random.random(),
-                    "null_pct": 0.0,
+                    "null_pct": 0.0
+                    if is_not_null
+                    else round(random.randint(20, 80) / 100, 2),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
             }
@@ -399,7 +438,9 @@ def ddl_to_yaml(ddl: str):
                     "end": "15:30:00",
                     "micros": False,
                     "seed": random.random(),
-                    "null_pct": 0.0,
+                    "null_pct": 0.0
+                    if is_not_null
+                    else round(random.randint(20, 80) / 100, 2),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
             }
@@ -411,7 +452,9 @@ def ddl_to_yaml(ddl: str):
                     "min": 10,
                     "max": 50,
                     "seed": random.random(),
-                    "null_pct": 0.0,
+                    "null_pct": 0.0
+                    if is_not_null
+                    else round(random.randint(20, 80) / 100, 2),
                 },
             }
 
@@ -423,7 +466,9 @@ def ddl_to_yaml(ddl: str):
                     "end": "2022-12-31",
                     "format": "%Y-%m-%d",
                     "seed": random.random(),
-                    "null_pct": 0.0,
+                    "null_pct": 0.0
+                    if is_not_null
+                    else round(random.randint(20, 80) / 100, 2),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
             }
@@ -436,7 +481,9 @@ def ddl_to_yaml(ddl: str):
                     "end": "2022-12-31",
                     "format": "%Y-%m-%d %H:%M:%S.%f",
                     "seed": random.random(),
-                    "null_pct": 0.0,
+                    "null_pct": 0.0
+                    if is_not_null
+                    else round(random.randint(20, 80) / 100, 2),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
             }
@@ -446,7 +493,9 @@ def ddl_to_yaml(ddl: str):
                 "type": "UUIDv4",
                 "args": {
                     "seed": random.random(),
-                    "null_pct": 0,
+                    "null_pct": 0.0
+                    if is_not_null
+                    else round(random.randint(20, 80) / 100, 2),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
             }
@@ -481,21 +530,26 @@ def ddl_to_yaml(ddl: str):
         for i in col_def_raw:
             if i == "(":
                 within_brackets += 1
+                col_def += " "
                 continue
             if i == ")":
                 within_brackets -= 1
+                col_def += " "
                 continue
-            if within_brackets == 0:
+            if within_brackets == 0 or i.isdigit():
                 col_def += i
+            elif within_brackets > 0 and i == ",":
+                col_def += ":"
 
         col_def = [x.strip().lower() for x in col_def.split(",")]
 
-        
         ll = []
         for x in col_def:
             # remove commented lines
             if not x.startswith("--"):
-                col_name_and_type = x.strip().split(" ")[:3]
+                # break it down to tokens
+                col_name_and_type = x.strip().split(" ")
+                col_name_and_type = [x for x in col_name_and_type if x]
                 # remove those lines that are not column definition,
                 # like CONSTRAINT, INDEX, FAMILY, etc..
                 if col_name_and_type[0].lower() not in RESERVED_WORDS:
@@ -534,6 +588,7 @@ def ddl_to_yaml(ddl: str):
             p1 = i.find("(")
             if i.startswith("create"):
                 if "table" in i[:p1].lower():
+                    i = i[: i.find("with")]
                     create_table_stmts.append(i)
 
         return create_table_stmts

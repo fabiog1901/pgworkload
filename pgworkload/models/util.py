@@ -9,7 +9,7 @@ import pgworkload.utils.common
 import sys
 import yaml
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("pgworkload")
 
 
 def util_csv(

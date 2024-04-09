@@ -20,7 +20,7 @@ import typer
 import yaml
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("pgworkload")
 
 app = typer.Typer(
     epilog=EPILOG,
@@ -125,7 +125,7 @@ def run(
     )
 
 
-@app.command(help="Init the workload.", epilog=EPILOG, no_args_is_help=True)
+#@app.command(help="Init the workload.", epilog=EPILOG, no_args_is_help=True)
 def init(
     workload_path: Optional[Path] = Param.WorkloadPath,
     procs: int = Param.Procs,
@@ -149,9 +149,7 @@ def init(
     args: str = Param.Args,
     log_level: LogLevel = Param.LogLevel,
 ):
-    logging.getLogger(__package__).setLevel(log_level.upper())
-
-    logger.debug("Executing run()")
+    logger.debug("Executing init()")
 
     procs, dburl, args = __validate(procs, dburl, None, args, workload_path)
 
