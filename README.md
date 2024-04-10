@@ -180,7 +180,7 @@ Example: if we set `--procs 4` and `--concurrency 10`, pgworkload will create as
 - Process-1: MainThread + 2 extra threads. Total = 3
 - Process-2: MainThread + 2 extra threads. Total = 3
 - Process-3: MainThread + 1 extra thread.  Total = 2
-- Process-3: MainThread + 1 extra thread.  Total = 2
+- Process-4: MainThread + 1 extra thread.  Total = 2
 
 Total workloads = 10
 
@@ -188,20 +188,23 @@ This allows you to fine tune the count of Python processes and threads to fit yo
 
 ## Generating CSV files
 
-- You can seed a database quickly by letting pgworkload generate pseudo-random data and import it.
+- You can seed a database quickly by letting `pgworkload` generate pseudo-random data and import it.
 - `pgworkload` takes the DDL as an input and creates an intermediate YAML file, with the definition of what data you want to create (a string, a number, a date, a bool..) based on the column data type.
 - You then refine the YAML file to suit your needs, for example, the size of the string, a range for a date, the precision for a decimal, a choice among a discrete list of values..
 - You can also specify what is the percentage of NULL for any column, or how many elements in an ARRAY type.
 - You then specify the total row count, how many rows per file, and in what order, if any, to sort by.
 - Then `pgworkload` will generate the data into CSV or TSV files, compress them if so requested.
+- You can then optionally merge-sort the files using command `merge`.
 
-Write up: <https://dev.to/cockroachlabs/generate-multiple-large-sorted-csv-files-with-pseudo-random-data-1jo4>
+Write up blog: [Generate multiple large sorted csv files with pseudo-random data](https://dev.to/cockroachlabs/generate-multiple-large-sorted-csv-files-with-pseudo-random-data-1jo4)
 
-Find out more on the `yaml` and `csv` commands by running
+Find out more on the `yaml`, `csv` and `merge` commands by running
 
 ```bash
 pgworkload util --help
 ```
+
+Consult file `workloads/bank.yaml` for a list of all available generators and options.
 
 ## Built-in Workloads
 
