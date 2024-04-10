@@ -245,6 +245,35 @@ class SimpleFaker:
                         ]
                     )
 
+    class Bit(Abc):
+        """Iterator that yields random bits"""
+
+        def __init__(self, size: int, seed: float, null_pct: float, array: int):
+            super().__init__(seed, null_pct, array)
+            self.size: int = 1 if size is None else size
+
+        def __next__(self):
+            if self.null_pct and self.rng.random() < self.null_pct:
+                return ""
+            else:
+                if not self.array:
+                    return "".join(
+                        [str(int(self.rng.random() > 0.5)) for _ in range(self.size)]
+                    )
+                else:
+                    return "ARRAY[%s]" % ",".join(
+                        f"B'{x}'"
+                        for x in [
+                            "".join(
+                                [
+                                    str(int(self.rng.random() > 0.5))
+                                    for _ in range(self.size)
+                                ]
+                            )
+                            for _ in range(self.array)
+                        ]
+                    )
+
     class Bool(Integer):
         """Iterator that yields a random boolean (0, 1)"""
 
@@ -496,6 +525,9 @@ class SimpleFaker:
         # constant
         value = args.get("value")
 
+        # bit
+        size = args.get("size")
+
         # all types
         seed = args.get("seed", self.rng.random())
 
@@ -552,6 +584,12 @@ class SimpleFaker:
         elif type == "sequence":
             div = int(count / exec_threads)
             return [SimpleFaker.Sequence(div * x + start) for x in range(exec_threads)]
+        elif type == "bit":
+            div = int(count / exec_threads)
+            return [
+                SimpleFaker.Bit(size, seed, null_pct, array)
+                for x in range(exec_threads)
+            ]
         else:
             raise ValueError(
                 f"SimpleFaker type not implemented or recognized: '{type}'"

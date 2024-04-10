@@ -125,7 +125,7 @@ def run(
     )
 
 
-#@app.command(help="Init the workload.", epilog=EPILOG, no_args_is_help=True)
+# @app.command(help="Init the workload.", epilog=EPILOG, no_args_is_help=True)
 def init(
     workload_path: Optional[Path] = Param.WorkloadPath,
     procs: int = Param.Procs,

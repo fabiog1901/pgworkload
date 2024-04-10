@@ -82,6 +82,13 @@ ref_data:
           seed: 0
           null_pct: 0.2
           array: 0
+      my_bit:
+        type: bit
+        args:
+          size: 1
+          seed: 0
+          null_pct: 0.2
+          array: 0
       # my_bytes:
       #   type: bytes
       #   args:

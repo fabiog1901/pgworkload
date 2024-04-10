@@ -344,9 +344,9 @@ def ddl_to_yaml(ddl: str):
                 "type": "bool",
                 "args": {
                     "seed": random.random(),
-                    "null_pct": 0.0
-                    if is_not_null
-                    else round(random.randint(20, 80) / 100, 2),
+                    "null_pct": (
+                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                    ),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
             }
@@ -367,9 +367,9 @@ def ddl_to_yaml(ddl: str):
                     "min": 0,
                     "max": 1000000,
                     "seed": random.random(),
-                    "null_pct": 0.0
-                    if is_not_null
-                    else round(random.randint(20, 80) / 100, 2),
+                    "null_pct": (
+                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                    ),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
             }
@@ -387,9 +387,9 @@ def ddl_to_yaml(ddl: str):
                     "min": _min,
                     "max": _max,
                     "seed": random.random(),
-                    "null_pct": 0.0
-                    if is_not_null
-                    else round(random.randint(20, 80) / 100, 2),
+                    "null_pct": (
+                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                    ),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
             }
@@ -423,9 +423,9 @@ def ddl_to_yaml(ddl: str):
                     "max": _max,
                     "round": _round,
                     "seed": random.random(),
-                    "null_pct": 0.0
-                    if is_not_null
-                    else round(random.randint(20, 80) / 100, 2),
+                    "null_pct": (
+                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                    ),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
             }
@@ -438,9 +438,9 @@ def ddl_to_yaml(ddl: str):
                     "end": "15:30:00",
                     "micros": False,
                     "seed": random.random(),
-                    "null_pct": 0.0
-                    if is_not_null
-                    else round(random.randint(20, 80) / 100, 2),
+                    "null_pct": (
+                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                    ),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
             }
@@ -452,9 +452,9 @@ def ddl_to_yaml(ddl: str):
                     "min": 10,
                     "max": 50,
                     "seed": random.random(),
-                    "null_pct": 0.0
-                    if is_not_null
-                    else round(random.randint(20, 80) / 100, 2),
+                    "null_pct": (
+                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                    ),
                 },
             }
 
@@ -466,9 +466,9 @@ def ddl_to_yaml(ddl: str):
                     "end": "2022-12-31",
                     "format": "%Y-%m-%d",
                     "seed": random.random(),
-                    "null_pct": 0.0
-                    if is_not_null
-                    else round(random.randint(20, 80) / 100, 2),
+                    "null_pct": (
+                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                    ),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
             }
@@ -481,9 +481,9 @@ def ddl_to_yaml(ddl: str):
                     "end": "2022-12-31",
                     "format": "%Y-%m-%d %H:%M:%S.%f",
                     "seed": random.random(),
-                    "null_pct": 0.0
-                    if is_not_null
-                    else round(random.randint(20, 80) / 100, 2),
+                    "null_pct": (
+                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                    ),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
             }
@@ -493,9 +493,26 @@ def ddl_to_yaml(ddl: str):
                 "type": "UUIDv4",
                 "args": {
                     "seed": random.random(),
-                    "null_pct": 0.0
-                    if is_not_null
-                    else round(random.randint(20, 80) / 100, 2),
+                    "null_pct": (
+                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                    ),
+                    "array": DEFAULT_ARRAY_COUNT if is_array else 0,
+                },
+            }
+
+        elif datatype.lower() in ["bit", "varbit"]:
+            _size = 1
+            if arg and arg[0].isdigit():
+                _size = int(arg[0])
+
+            return {
+                "type": "bit",
+                "args": {
+                    "size": _size,
+                    "seed": random.random(),
+                    "null_pct": (
+                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                    ),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
             }
@@ -506,8 +523,22 @@ def ddl_to_yaml(ddl: str):
     def get_table_name_and_table_list(
         create_table_stmt: str, sort_by: list, count: int = 1000000
     ):
+        # find CREATE TABLE opening parenthesis
         p1 = create_table_stmt.find("(")
-        p2 = create_table_stmt.rfind(")")
+
+        # find CREATE TABLE closing parenthesis
+        within_brackets = 1
+        for i, c in enumerate(create_table_stmt[p1:]):
+            if c == "(":
+                within_brackets += 1
+            elif c == ")":
+                within_brackets -= 1
+            if within_brackets == 0:
+                break
+
+        # extract column definitions (within parentheses part)
+        # eg: id uuid primary key, s string(30)
+        col_def_raw = create_table_stmt[p1 + 1 : p1 + i].strip()
 
         # find table name (before parenthesis part)
         for i in create_table_stmt[:p1].split():
@@ -515,16 +546,6 @@ def ddl_to_yaml(ddl: str):
                 table_name = i.replace(".", "__")
                 break
 
-        # extract column definitions (within parentheses part)
-        # eg:
-        #   id uuid primary key
-        #   s string(30)
-        col_def_raw = create_table_stmt[p1 + 1 : p2]
-
-        # remove slices delimited by parenthesis
-        # eg: from id 'sting(30)' to 'id string'
-        # this is important as within parenthesis we might find commas
-        # and we need to split on commas later
         within_brackets = 0
         col_def = ""
         for i in col_def_raw:
@@ -579,26 +600,22 @@ def ddl_to_yaml(ddl: str):
         stmts = " ".join(x.lower() for x in ddl.split())
 
         # strip whitespace and remove empty items
-        stmts: list = [x.strip() for x in stmts.split(";") if x != ""]
+        stmts = [x.strip() for x in stmts.split(";") if x != ""]
 
         # keep only string that start with 'create' and
         # have word 'table' between beginning and the first open parenthesis
         create_table_stmts = []
-        for i in stmts:
-            p1 = i.find("(")
-            if i.startswith("create"):
-                if "table" in i[:p1].lower():
-                    i = i[: i.find("with")]
-                    create_table_stmts.append(i)
-
+        for stmt in stmts:
+            if stmt.startswith("create") and "table" in stmt[: stmt.find("(")].lower():
+                create_table_stmts.append(stmt)
         return create_table_stmts
 
     stmts = get_create_table_stmts(ddl)
 
     d = {}
-    for x in stmts:
+    for stmt in stmts:
         table_name, table_list = get_table_name_and_table_list(
-            x, count=1000, sort_by=[]
+            stmt, count=1000, sort_by=[]
         )
         d[table_name] = table_list
 
