@@ -19,55 +19,23 @@ class Bank:
             else args["lane"]
         )
 
-        # self.schema holds the DDL
-        self.schema: str = """
-            -- you can write the schema ddl here, but it's simpler to pass a .sql file
-            CREATE TABLE IF NOT EXISTS transaction (
-                id UUID,
-                event INT,
-                lane STRING,
-                ts TIMESTAMP,
-                PRIMARY KEY (id, event)
-            );
-            """
-
-        # self.load holds the data generation YAML
-        # definition to populate the tables
-        self.load: str = """ 
-# This has to be a YAML string so 
-# it's important it starts with no indentation
-# it's easier however, to pass a .yaml file instead 
-credits:
-  - count: 2000
-    sort-by:
-      - id
-    tables:
-      id:
-        type: UUIDv4
-        args:
-          seed: 0
-"""
-
         # you can arbitrarely add any variables you want
         self.uuid: uuid.UUID = uuid.uuid4()
         self.ts: dt.datetime = ""
         self.event: str = ""
 
-    # the 'init' method is executed once, when the --init flag is passed
 
-    def init(self, conn: psycopg.Connection):
-        with conn.cursor() as cur:
-            logging.info(cur.execute("select version();").fetchone())
-
-    # the run method returns a list of transactions to be executed continuosly,
-    # sequentially, as in a cycle.
+    # the run() method returns a list of functions 
+    # that pgworkload will execute, sequentially.
+    # Once every func has been executed, run() is re-evaluated.
+    # This process continues until pgworkload exits.
     def run(self):
         if random.random() < self.read_pct:
             return [self.read]
         return [self.txn1_new, self.txn2_verify, self.txn3_finalize]
 
     # conn is an instance of a psycopg connection object
-    # conn is set with autocommit=True, so no need to send a commit message
+    # conn is set by default with autocommit=True, so no need to send a commit message
     def read(self, conn: psycopg.Connection):
         with conn.cursor() as cur:
             cur.execute(
@@ -82,6 +50,10 @@ credits:
         self.ts = dt.datetime.now()
         self.event = 0
 
+        # make sure you pass the arguments in this fashion
+        # so the statement can be PREPAREd (extended protocol).
+        
+        # Simple SQL strings will use the Simple Protocol.
         with conn.cursor() as cur:
             stmt = """
                 insert into transactions values (%s, %s, %s, %s);
