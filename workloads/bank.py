@@ -24,8 +24,7 @@ class Bank:
         self.ts: dt.datetime = ""
         self.event: str = ""
 
-
-    # the run() method returns a list of functions 
+    # the run() method returns a list of functions
     # that pgworkload will execute, sequentially.
     # Once every func has been executed, run() is re-evaluated.
     # This process continues until pgworkload exits.
@@ -52,7 +51,7 @@ class Bank:
 
         # make sure you pass the arguments in this fashion
         # so the statement can be PREPAREd (extended protocol).
-        
+
         # Simple SQL strings will use the Simple Protocol.
         with conn.cursor() as cur:
             stmt = """

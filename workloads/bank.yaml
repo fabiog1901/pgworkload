@@ -89,11 +89,13 @@ ref_data:
           seed: 0
           null_pct: 0.2
           array: 0
-      # my_bytes:
-      #   type: bytes
-      #   args:
-      #     n: 20
-      #     seed: 0
+      my_bytes:
+        type: bytes
+        args:
+          size: 20
+          seed: 0
+          null_pct: 0
+          array: 0
       my_string:
         type: string
         args:

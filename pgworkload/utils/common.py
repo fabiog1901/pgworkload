@@ -378,7 +378,7 @@ def ddl_to_yaml(ddl: str):
             _min = 10
             _max = 30
             if arg and arg[0].isdigit():
-                _min = int(arg[0]) // 3
+                _min = int(arg[0]) // 3 + 1
                 _max = int(arg[0])
 
             return {
@@ -462,8 +462,8 @@ def ddl_to_yaml(ddl: str):
             return {
                 "type": "date",
                 "args": {
-                    "start": "2022-01-01",
-                    "end": "2022-12-31",
+                    "start": "2000-01-01",
+                    "end": "2024-12-31",
                     "format": "%Y-%m-%d",
                     "seed": random.random(),
                     "null_pct": (
@@ -477,8 +477,8 @@ def ddl_to_yaml(ddl: str):
             return {
                 "type": "timestamp",
                 "args": {
-                    "start": "2022-01-01",
-                    "end": "2022-12-31",
+                    "start": "2000-01-01",
+                    "end": "2024-12-31",
                     "format": "%Y-%m-%d %H:%M:%S.%f",
                     "seed": random.random(),
                     "null_pct": (
@@ -509,6 +509,19 @@ def ddl_to_yaml(ddl: str):
                 "type": "bit",
                 "args": {
                     "size": _size,
+                    "seed": random.random(),
+                    "null_pct": (
+                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                    ),
+                    "array": DEFAULT_ARRAY_COUNT if is_array else 0,
+                },
+            }
+
+        elif datatype.lower() in ["bytes", "blob", "bytea"]:
+            return {
+                "type": "bytes",
+                "args": {
+                    "size": 20,
                     "seed": random.random(),
                     "null_pct": (
                         0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)

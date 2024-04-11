@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS ref_data (
     my_date DATE,
     my_time TIME,
     my_bit BIT,
-    -- my_bytes BYTES,
+    my_bytes BYTES,
     my_string VARCHAR[],
     my_bool BOOL,
     my_json JSONB

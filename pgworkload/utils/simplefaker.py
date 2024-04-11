@@ -165,7 +165,7 @@ class SimpleFaker:
             self, min: int, max: int, seed: float, null_pct: float, array: int
         ):
             super().__init__(seed, null_pct, array)
-            self.min: int = 10 if min is None or min < 0 else min
+            self.min: int = 10 if min is None or min <= 0 else min
             self.max: int = self.min + 20 if max is None or max < self.min else max
 
             # make translation table from 0..255 to 97..122
@@ -307,27 +307,25 @@ class SimpleFaker:
                         ]
                     )
 
-    class Bytes(Abc):
+    class Bytes(String):
         """Iterator that yields a random byte array"""
 
-        def __init__(self, n: int, seed: float, null_pct: float, array: int):
-            super().__init__(seed, null_pct, array)
-            self.n: int = 1 if n is None else n
+        def __init__(self, size: int, seed: float, null_pct: float, array: int):
+            self.size: int = 20 if size is None else size
+            super().__init__(
+                min=self.size, max=self.size, null_pct=null_pct, seed=seed, array=array
+            )
 
         def __next__(self):
-            if self.null_pct and self.rng.random() < self.null_pct:
+            v = super().__next__()
+            if not v:
                 return ""
+            if not self.array:
+                return f"\\\\x{v}"
             else:
-                if not self.array:
-                    return self.rng.getrandbits(self.n * 8).to_bytes(self.n, "little")
-                else:
-                    return "ARRAY[%s]" % ",".join(
-                        f"'{x}'"
-                        for x in [
-                            self.rng.getrandbits(self.n * 8).to_bytes(self.n, "little")
-                            for _ in range(self.array)
-                        ]
-                    )
+                return "ARRAY[%s]" % ",".join(
+                    [f"'\\\\x{x[1:]}" for x in v[6:-1].split(",")]
+                )
 
     class Choice(Abc):
         """Iterator that yields 1 item from a list"""
@@ -514,7 +512,6 @@ class SimpleFaker:
         # integer/float
         min = args.get("min")
         max = args.get("max")
-        n = args.get("n")
         round = args.get("round")
 
         # choice
@@ -554,7 +551,7 @@ class SimpleFaker:
         elif type in ["json", "jsonb"]:
             return [SimpleFaker.Json(min, max, seed, null_pct) for seed in seeds]
         elif type == "bytes":
-            return [SimpleFaker.Bytes(n, seed, null_pct, array) for seed in seeds]
+            return [SimpleFaker.Bytes(size, seed, null_pct, array) for seed in seeds]
         elif type == "choice":
             return [
                 SimpleFaker.Choice(
@@ -643,7 +640,7 @@ class SimpleFaker:
                 columns=col_names,
             ).sort_values(by=sort_by).to_csv(
                 basename + "_" + str(x) + suffix,
-                quoting=csv.QUOTE_NONE,
+                quoting=csv.QUOTE_MINIMAL,
                 sep=separator,
                 header=False,
                 index=False,
@@ -658,6 +655,7 @@ class SimpleFaker:
                 columns=col_names,
             ).sort_values(by=sort_by).to_csv(
                 basename + "_" + str(count) + suffix,
+                quoting=csv.QUOTE_MINIMAL,
                 sep=separator,
                 header=False,
                 index=False,
