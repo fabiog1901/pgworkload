@@ -386,6 +386,7 @@ def ddl_to_yaml(ddl: str):
                 "args": {
                     "min": _min,
                     "max": _max,
+                    "prefix": "",
                     "seed": random.random(),
                     "null_pct": (
                         0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)

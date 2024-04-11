@@ -162,11 +162,18 @@ class SimpleFaker:
         """Iterator that yields a truly random string of ascii characters"""
 
         def __init__(
-            self, min: int, max: int, seed: float, null_pct: float, array: int
+            self,
+            min: int,
+            max: int,
+            prefix: str = "",
+            seed: float = 0.0,
+            null_pct: float = 0.0,
+            array: int = 0,
         ):
             super().__init__(seed, null_pct, array)
             self.min: int = 10 if min is None or min <= 0 else min
             self.max: int = self.min + 20 if max is None or max < self.min else max
+            self.prefix = prefix
 
             # make translation table from 0..255 to 97..122
             self.tbl = bytes.maketrans(
@@ -186,14 +193,15 @@ class SimpleFaker:
                 size = self.rng.randint(self.min, self.max)
                 if not self.array:
                     return (
-                        self.rng.getrandbits(8 * size)
+                        self.prefix
+                        + self.rng.getrandbits(8 * size)
                         .to_bytes(size, "big")
                         .translate(self.tbl)
                         .decode()
                     )
                 else:
                     return "ARRAY[%s]" % ",".join(
-                        f"'{x}'"
+                        f"'{self.prefix}{x}'"
                         for x in [
                             self.rng.getrandbits(size * 8)
                             .to_bytes(size, "big")
@@ -506,6 +514,7 @@ class SimpleFaker:
 
         start = args.get("start")
         end = args.get("end")
+        prefix = args.get("prefix")
         format = args.get("format")
         micros = args.get("micros")
 
@@ -546,7 +555,8 @@ class SimpleFaker:
             return [SimpleFaker.Bool(seed, null_pct, array) for seed in seeds]
         elif type == "string":
             return [
-                SimpleFaker.String(min, max, seed, null_pct, array) for seed in seeds
+                SimpleFaker.String(min, max, prefix, seed, null_pct, array)
+                for seed in seeds
             ]
         elif type in ["json", "jsonb"]:
             return [SimpleFaker.Json(min, max, seed, null_pct) for seed in seeds]

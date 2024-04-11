@@ -101,6 +101,7 @@ ref_data:
         args:
           min: 100
           max: 500
+          prefix: ''
           seed: 0
           null_pct: 0.2
           array: 3
