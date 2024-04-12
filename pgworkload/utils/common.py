@@ -374,7 +374,14 @@ def ddl_to_yaml(ddl: str):
                 },
             }
 
-        elif datatype.lower() in ["string", "char", "character", "varchar", "text"]:
+        elif datatype.lower() in [
+            "string",
+            "char",
+            "character",
+            "varchar",
+            "text",
+            "clob",
+        ]:
             _min = 10
             _max = 30
             if arg and arg[0].isdigit():
@@ -532,7 +539,9 @@ def ddl_to_yaml(ddl: str):
             }
 
         else:
-            logger.error(f"Data type not implemented: '{datatype}'. Consider changing to another datatype or raise a GitHub issue.")
+            logger.error(
+                f"Data type not implemented: '{datatype}'. Consider changing to another datatype or raise a GitHub issue."
+            )
             sys.exit(1)
 
     def get_table_name_and_table_list(
