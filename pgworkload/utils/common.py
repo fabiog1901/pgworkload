@@ -532,7 +532,8 @@ def ddl_to_yaml(ddl: str):
             }
 
         else:
-            raise ValueError(f"Data type not implemented: '{datatype}'")
+            logger.error(f"Data type not implemented: '{datatype}'. Consider changing to another datatype or raise a GitHub issue.")
+            sys.exit(1)
 
     def get_table_name_and_table_list(
         create_table_stmt: str, sort_by: list, count: int = 1000000
