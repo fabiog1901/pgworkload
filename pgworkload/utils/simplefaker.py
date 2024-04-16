@@ -304,7 +304,7 @@ class SimpleFaker:
         ):
             super().__init__(seed, null_pct, array)
             self.min = min
-            self.max = max - 1 # max value must not be inclusive
+            self.max = max - 1  # max value must not be inclusive
             self.round = round
 
         def __next__(self):

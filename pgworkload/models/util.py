@@ -28,7 +28,7 @@ def util_csv(
     """
 
     with open(input, "r") as f:
-        load = yaml.safe_load(f.read())
+        load: dict = yaml.safe_load(f.read())
 
     if not output:
         output_dir = pgworkload.utils.common.get_based_name_dir(input)
@@ -65,11 +65,18 @@ def util_csv(
         http_server_hostname = pgworkload.utils.common.get_hostname()
         logger.debug(f"Hostname identified as: '{http_server_hostname}'")
 
-    stmt = pgworkload.utils.common.get_import_stmt(
-        csv_files, table_name, http_server_hostname, http_server_port
-    )
-
-    print(stmt)
+    for table_name in load.keys():
+        print(
+            pgworkload.utils.common.get_import_stmt(
+                [x for x in csv_files if x.startswith(table_name)],
+                table_name,
+                http_server_hostname,
+                http_server_port,
+                delimiter,
+                "",
+            )
+        )
+        print()
 
 
 def util_yaml(input: str, output: str):

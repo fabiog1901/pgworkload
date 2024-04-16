@@ -6,3 +6,4 @@
 - Gracefully exit on unknown datatype.
 - Added CLOB as STRING alias.
 - Fixed `Float` generator bug that creted numbers bigger than desired DECIMAL precision.
+- Fixed `IMPORT INTO` statement created by `util csv` command.

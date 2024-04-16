@@ -677,14 +677,26 @@ def get_import_stmt(
     table_name: str,
     http_server_hostname: str = "myhost",
     http_server_port: str = "3000",
+    delimiter: str = "",
+    nullif: str = "",
 ):
     csv_data = ""
     for x in csv_files:
         csv_data += "'http://%s:%s/%s'," % (http_server_hostname, http_server_port, x)
 
-    stmt = "IMPORT INTO %s CSV DATA (%s) WITH delimiter = e'\\t', nullif = '';" % (
-        table_name,
-        csv_data[:-1],
-    )
-
-    return stmt
+    if delimiter == "\t":
+        return (
+            "IMPORT INTO %s CSV DATA (%s) WITH delimiter = e'\\t', nullif = '%s';"
+            % (
+                table_name,
+                csv_data[:-1],
+                nullif,
+            )
+        )
+    else:
+        return "IMPORT INTO %s CSV DATA (%s) WITH delimiter = '%s', nullif = '%s';" % (
+            table_name,
+            csv_data[:-1],
+            delimiter,
+            nullif,
+        )
