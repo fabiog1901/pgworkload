@@ -412,13 +412,14 @@ def ddl_to_yaml(ddl: str):
             "real",
             "double",
         ]:
+            _min = 0
             _max = 10000000
             _round = 2
             if arg:
                 if ":" in arg[0]:
                     prec, scale = arg[0].split(":")
                     if prec:
-                        _max = 10 ** int(prec)
+                        _max = 10 ** (int(prec) - int(scale))
                     if scale:
                         _round = int(scale)
                 elif arg[0].isdigit():
@@ -428,6 +429,7 @@ def ddl_to_yaml(ddl: str):
             return {
                 "type": "float",
                 "args": {
+                    "min": _min,
                     "max": _max,
                     "round": _round,
                     "seed": random.random(),

@@ -294,23 +294,30 @@ class SimpleFaker:
         """Iterator that yields a random float number"""
 
         def __init__(
-            self, max: int, round: int, seed: float, null_pct: float, array: int
+            self,
+            min: int = 0,
+            max: int = 1000,
+            round: int = 2,
+            seed: float = 0,
+            null_pct: float = 0,
+            array: int = 0,
         ):
             super().__init__(seed, null_pct, array)
-            self.max: int = 1000 if max is None else max
-            self.round: int = 2 if round is None else round
+            self.min = min
+            self.max = max - 1 # max value must not be inclusive
+            self.round = round
 
         def __next__(self):
             if self.null_pct and self.rng.random() < self.null_pct:
                 return ""
             else:
                 if not self.array:
-                    return round(self.rng.random() * self.max, self.round)
+                    return round(self.rng.uniform(self.min, self.max), self.round)
                 else:
                     return "ARRAY[%s]" % ",".join(
                         f"{x}"
                         for x in [
-                            round(self.rng.random() * self.max, self.round)
+                            round(self.rng.uniform(self.min, self.max), self.round)
                             for _ in range(self.array)
                         ]
                     )
@@ -549,7 +556,8 @@ class SimpleFaker:
             ]
         elif type in ["float", "decimal"]:
             return [
-                SimpleFaker.Float(max, round, seed, null_pct, array) for seed in seeds
+                SimpleFaker.Float(min, max, round, seed, null_pct, array)
+                for seed in seeds
             ]
         elif type == "bool":
             return [SimpleFaker.Bool(seed, null_pct, array) for seed in seeds]

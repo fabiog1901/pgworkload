@@ -3,3 +3,6 @@
 0.1.11
 
 - SimpleFaker: added `prefix` to `string` generator.
+- Gracefully exit on unknown datatype.
+- Added CLOB as STRING alias.
+- Fixed `Float` generator bug that creted numbers bigger than desired DECIMAL precision.
