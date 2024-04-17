@@ -1,6 +1,6 @@
 # CHANGELOG
 
-0.1.11
+## 0.1.11
 
 - SimpleFaker: added `prefix` to `string` generator.
 - Gracefully exit on unknown datatype.
