@@ -16,21 +16,23 @@ class SimpleFaker:
     """
 
     def __init__(self, seed: float = None, csv_max_rows: int = 100000):
-        self.csv_max_rows: int = csv_max_rows
+        self.csv_max_rows = csv_max_rows
         self.rng: random.Random = random.Random(seed)
 
     class Abc:
-        def __init__(self, seed: float, null_pct: float, array: int):
-            self.array: int = 0 if array is None else array
-            self.null_pct: float = 0.0 if null_pct is None else null_pct
+        def __init__(self, seed: float, null_pct: float = 0, array: int = 0):
+            self.array = array
+            self.null_pct = null_pct
             self.rng: random.Random = random.Random(seed)
 
     class Constant(Abc):
         """Iterator always yields the same value."""
 
-        def __init__(self, value: str, seed: float, null_pct: float):
+        def __init__(
+            self, value: str = "simplefaker", seed: float = 0, null_pct: float = 0
+        ):
             super().__init__(seed, null_pct, 0)
-            self.value: str = "simplefaker" if value is None else value
+            self.value = value
 
         def __next__(self):
             if self.rng.random() < self.null_pct:
@@ -40,8 +42,8 @@ class SimpleFaker:
     class Sequence:
         """Iterator that counts upward forever."""
 
-        def __init__(self, start: int):
-            self.start: int = 0 if start is None else start
+        def __init__(self, start: int = 0):
+            self.start = start
 
         def __next__(self):
             start: int = self.start
@@ -51,7 +53,7 @@ class SimpleFaker:
     class UUIDv4(Abc):
         """Iterator thar yields a UUIDv4"""
 
-        def __init__(self, seed: int, null_pct: float, array: int):
+        def __init__(self, seed: float, null_pct: float, array: int):
             super().__init__(seed, null_pct, array)
 
         def __next__(self):
@@ -74,22 +76,17 @@ class SimpleFaker:
 
         def __init__(
             self,
-            start: str,
-            end: str,
-            format: str,
-            seed: float,
-            null_pct: float,
-            array: int,
+            start: str = "2000-01-01",
+            end: str = "2024-12-31",
+            format: str = "%Y-%m-%d %H:%M:%S.%f",
+            seed: float = 0,
+            null_pct: float = 0,
+            array: int = 0,
         ):
             super().__init__(seed, null_pct, array)
-            self.format: str = "%Y-%m-%d %H:%M:%S.%f" if format is None else format
-            self._start: str = "2022-01-01" if start is None else start
-            self._end: str = "2022-12-31" if end is None else end
-            self.start: float = (
-                dt.datetime.fromisoformat(self._start).timestamp() * 1000000
-            )
-
-            self.end: float = dt.datetime.fromisoformat(self._end).timestamp() * 1000000
+            self.format = format
+            self.start = int(dt.datetime.fromisoformat(start).timestamp()) * 1000000
+            self.end = int(dt.datetime.fromisoformat(end).timestamp()) * 1000000
 
         def __next__(self):
             if self.null_pct and self.rng.random() < self.null_pct:
@@ -115,19 +112,17 @@ class SimpleFaker:
 
         def __init__(
             self,
-            start: str,
-            end: str,
-            format: str,
-            seed: float,
-            null_pct: float,
-            array: int,
+            start: str = "2000-01-01",
+            end: str = "2024-12-31",
+            format: str = "%Y-%m-%d",
+            seed: float = 0,
+            null_pct: float = 0,
+            array: int = 0,
         ):
-            self.format: str = "%Y-%m-%d" if format is None else format
-
             super().__init__(
                 start=start,
                 end=end,
-                format=self.format,
+                format=format,
                 null_pct=null_pct,
                 seed=seed,
                 array=array,
@@ -138,21 +133,17 @@ class SimpleFaker:
 
         def __init__(
             self,
-            start: str,
-            end: str,
-            micros: bool,
-            seed: float,
-            null_pct: int,
-            array: int,
+            start: str = "07:30:00",
+            end: str = "22:30:00",
+            micros: bool = False,
+            seed: float = 0,
+            null_pct: float = 0,
+            array: int = 0,
         ):
-            self.format: str = "%H:%M:%S" if not micros else "%H:%M:%S.%f"
-            self._start: str = "07:30:00" if start is None else start
-            self._end: str = "15:30:00" if end is None else end
-
             super().__init__(
-                start="1970-01-01 " + self._start,
-                end="1970-01-01 " + self._end,
-                format=self.format,
+                start="1970-01-01 " + start,
+                end="1970-01-01 " + end,
+                format="%H:%M:%S" if not micros else "%H:%M:%S.%f",
                 null_pct=null_pct,
                 seed=seed,
                 array=array,
@@ -163,17 +154,20 @@ class SimpleFaker:
 
         def __init__(
             self,
-            min: int,
-            max: int,
+            min: int = 10,
+            max: int = 50,
             prefix: str = "",
             seed: float = 0.0,
             null_pct: float = 0.0,
             array: int = 0,
         ):
             super().__init__(seed, null_pct, array)
-            self.min: int = 10 if min is None or min <= 0 else min
-            self.max: int = self.min + 20 if max is None or max < self.min else max
+            self.min = min
+            self.max = max
             self.prefix = prefix
+
+            assert min >= 0
+            assert min <= max
 
             # make translation table from 0..255 to 97..122
             self.tbl = bytes.maketrans(
@@ -185,7 +179,7 @@ class SimpleFaker:
                 ),
             )
 
-        # generate random bytes and translate them to lowercase ascii
+        # generate random bytes and translate them to ascii
         def __next__(self):
             if self.null_pct and self.rng.random() < self.null_pct:
                 return ""
@@ -214,10 +208,16 @@ class SimpleFaker:
     class Json(String):
         """Iterator that yields a simple json string"""
 
-        def __init__(self, min_num: int, max_num: int, seed: float, null_pct: float):
+        def __init__(
+            self,
+            min_num: int = 10,
+            max_num: int = 50,
+            seed: float = 0,
+            null_pct: float = 0,
+        ):
             # 9 is the number of characters in the hardcoded string
-            self.min = 10 if min_num is None else max(min_num - 9, 1)
-            self.max = 50 if max_num is None else max(max_num - 9, 2)
+            self.min = max(min_num - 9, 1)
+            self.max = max(max_num - 9, 2)
             super().__init__(
                 min=self.min, max=self.max, null_pct=null_pct, seed=seed, array=0
             )
@@ -232,11 +232,16 @@ class SimpleFaker:
         """Iterator that yields a random integer"""
 
         def __init__(
-            self, min_num: int, max_num: int, seed: float, null_pct: float, array: int
+            self,
+            min_num: int = 1,
+            max_num: int = 1000000000,
+            seed: float = 0,
+            null_pct: float = 0,
+            array: int = 0,
         ):
             super().__init__(seed, null_pct, array)
-            self.min_num: int = 1000 if min_num is None else min_num
-            self.max_num: int = 9999 if max_num is None else max_num
+            self.min_num = min_num
+            self.max_num = max_num
 
         def __next__(self):
             if self.null_pct and self.rng.random() < self.null_pct:
@@ -256,9 +261,15 @@ class SimpleFaker:
     class Bit(Abc):
         """Iterator that yields random bits"""
 
-        def __init__(self, size: int, seed: float, null_pct: float, array: int):
+        def __init__(
+            self,
+            size: int = 10,
+            seed: float = 0,
+            null_pct: float = 0,
+            array: int = 0,
+        ):
             super().__init__(seed, null_pct, array)
-            self.size: int = 1 if size is None else size
+            self.size = size
 
         def __next__(self):
             if self.null_pct and self.rng.random() < self.null_pct:
@@ -282,13 +293,25 @@ class SimpleFaker:
                         ]
                     )
 
-    class Bool(Integer):
+    class Bool(Abc):
         """Iterator that yields a random boolean (0, 1)"""
 
         def __init__(self, seed: float, null_pct: float, array: int):
-            super().__init__(
-                min_num=0, max_num=1, null_pct=null_pct, seed=seed, array=array
-            )
+            super().__init__(seed, null_pct, array)
+
+        def __next__(self):
+            if self.null_pct and self.rng.random() < self.null_pct:
+                return ""
+            else:
+                if not self.array:
+                    return int(self.rng.random() > 0.5)
+                else:
+                    return "ARRAY[%s]" % ",".join(
+                        [
+                            f"'{str(int(self.rng.random() > 0.5))}'"
+                            for _ in range(self.array)
+                        ]
+                    )
 
     class Float(Abc):
         """Iterator that yields a random float number"""
@@ -325,8 +348,14 @@ class SimpleFaker:
     class Bytes(String):
         """Iterator that yields a random byte array"""
 
-        def __init__(self, size: int, seed: float, null_pct: float, array: int):
-            self.size: int = 20 if size is None else size
+        def __init__(
+            self,
+            size: int = 20,
+            seed: float = 0,
+            null_pct: float = 0,
+            array: int = 0,
+        ):
+            self.size = size
             super().__init__(
                 min=self.size, max=self.size, null_pct=null_pct, seed=seed, array=array
             )
@@ -347,21 +376,17 @@ class SimpleFaker:
 
         def __init__(
             self,
-            population: list,
-            weights: list,
-            cum_weights: list,
-            seed: float,
-            null_pct: float,
-            array: int,
+            population: list = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            weights: list = None,
+            cum_weights: list = None,
+            seed: float = 0,
+            null_pct: float = 0,
+            array: int = 0,
         ):
             super().__init__(seed, null_pct, array)
-            self.population: list = (
-                ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-                if population is None
-                else population
-            )
-            self.weights: list = None if not weights else weights
-            self.cum_weights: list = None if not cum_weights else cum_weights
+            self.population = population
+            self.weights = weights
+            self.cum_weights = cum_weights
 
         def __next__(self):
             if self.null_pct and self.rng.random() < self.null_pct:
@@ -519,30 +544,30 @@ class SimpleFaker:
         array: int = args.get("array", 0)
         null_pct: float = args.get("null_pct", 0.0)
 
-        start = args.get("start")
-        end = args.get("end")
-        prefix = args.get("prefix")
-        format = args.get("format")
-        micros = args.get("micros")
+        start: str = args.get("start", "")
+        end: str = args.get("end", "")
+        prefix: str = args.get("prefix", "")
+        format: str = args.get("format","")
+        micros: bool = args.get("micros", False)
 
         # integer/float
-        min = args.get("min")
-        max = args.get("max")
-        round = args.get("round")
+        min: int = args.get("min", 0)
+        max: int = args.get("max", 10)
+        round: int = args.get("round", 2)
 
         # choice
-        population = args.get("population")
-        weights = args.get("weights")
-        cum_weights = args.get("cum_weights")
+        population: list = args.get("population", [])
+        weights: list = args.get("weights", [])
+        cum_weights: list = args.get("cum_weights", [])
 
         # constant
-        value = args.get("value")
+        value: str = args.get("value", "")
 
         # bit
-        size = args.get("size")
+        size: int = args.get("size", 10)
 
         # all types
-        seed = args.get("seed", self.rng.random())
+        seed: float = args.get("seed", self.rng.random())
 
         # create a list of pseudo random seeds
         r = random.Random(seed)
@@ -598,7 +623,7 @@ class SimpleFaker:
             return [SimpleFaker.Constant(value, seed, null_pct) for seed in seeds]
         elif type == "sequence":
             div = int(count / exec_threads)
-            return [SimpleFaker.Sequence(div * x + start) for x in range(exec_threads)]
+            return [SimpleFaker.Sequence(div * x + int(start)) for x in range(exec_threads)]
         elif type == "bit":
             div = int(count / exec_threads)
             return [

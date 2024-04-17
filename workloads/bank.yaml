@@ -35,7 +35,7 @@ ref_data:
             - 1
             - 1
             - 1 
-          cum_weights: []
+          cum_weights: 
             # None
           seed: 0
           null_pct: 0.1
@@ -43,19 +43,29 @@ ref_data:
       my_integer:
         type: integer
         args:
-          start: 10000
-          end: 100000
+          min: 100
+          max: 100000
           seed: 0
           null_pct: 0.2
           array: 0
       my_float:
         type: float
         args:
-          max: 10000
+          min: 0
+          max: 1000000
           round: 2
           seed: 0
           null_pct: 0.1
           array: 10
+      my_decimal:
+        type: float
+        args:
+          min: 0
+          max: 100000000000
+          round: 4
+          seed: 0
+          null_pct: 0.2
+          array: 0
       my_timestamp:
         type: timestamp
         args:
@@ -85,7 +95,7 @@ ref_data:
       my_bit:
         type: bit
         args:
-          size: 1
+          size: 10
           seed: 0
           null_pct: 0.2
           array: 0
@@ -99,9 +109,9 @@ ref_data:
       my_string:
         type: string
         args:
-          min: 100
-          max: 500
-          prefix: ''
+          min: 5
+          max: 20
+          prefix: 'ID-'
           seed: 0
           null_pct: 0.2
           array: 3
@@ -110,10 +120,11 @@ ref_data:
         args:
           seed: 0
           null_pct: 0.2
+          array: 0
       my_json:
         type: jsonb
         args:
-          min: 500
-          max: 10000
+          min: 15
+          max: 25
           seed: 0
           null_pct: 0.2
