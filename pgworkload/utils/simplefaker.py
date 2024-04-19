@@ -63,10 +63,9 @@ class SimpleFaker:
                 if not self.array:
                     return uuid.UUID(int=self.rng.getrandbits(128), version=4)
                 else:
-                    return "ARRAY[%s]" % ",".join(
-                        f"'{x}'"
-                        for x in [
-                            uuid.UUID(int=self.rng.getrandbits(128), version=4)
+                    return "{%s}" % ",".join(
+                        [
+                            str(uuid.UUID(int=self.rng.getrandbits(128), version=4))
                             for _ in range(self.array)
                         ]
                     )
@@ -97,9 +96,8 @@ class SimpleFaker:
                         self.rng.randint(self.start, self.end) / 1000000
                     ).strftime(self.format)
                 else:
-                    return "ARRAY[%s]" % ",".join(
-                        f"'{x}'"
-                        for x in [
+                    return "{%s}" % ",".join(
+                        [
                             dt.datetime.fromtimestamp(
                                 self.rng.randint(self.start, self.end) / 1000000
                             ).strftime(self.format)
@@ -194,8 +192,8 @@ class SimpleFaker:
                         .decode()
                     )
                 else:
-                    return "ARRAY[%s]" % ",".join(
-                        f"'{self.prefix}{x}'"
+                    return "{%s}" % ",".join(
+                        f"{self.prefix}{x}"
                         for x in [
                             self.rng.getrandbits(size * 8)
                             .to_bytes(size, "big")
@@ -250,10 +248,9 @@ class SimpleFaker:
                 if not self.array:
                     return self.rng.randint(self.min_num, self.max_num)
                 else:
-                    return "ARRAY[%s]" % ",".join(
-                        f"{x}"
-                        for x in [
-                            self.rng.randint(self.min_num, self.max_num)
+                    return "{%s}" % ",".join(
+                        [
+                            str(self.rng.randint(self.min_num, self.max_num))
                             for _ in range(self.array)
                         ]
                     )
@@ -280,9 +277,8 @@ class SimpleFaker:
                         [str(int(self.rng.random() > 0.5)) for _ in range(self.size)]
                     )
                 else:
-                    return "ARRAY[%s]" % ",".join(
-                        f"B'{x}'"
-                        for x in [
+                    return "{%s}" % ",".join(
+                        [
                             "".join(
                                 [
                                     str(int(self.rng.random() > 0.5))
@@ -306,11 +302,8 @@ class SimpleFaker:
                 if not self.array:
                     return int(self.rng.random() > 0.5)
                 else:
-                    return "ARRAY[%s]" % ",".join(
-                        [
-                            f"'{str(int(self.rng.random() > 0.5))}'"
-                            for _ in range(self.array)
-                        ]
+                    return "{%s}" % ",".join(
+                        [str(int(self.rng.random() > 0.5)) for _ in range(self.array)]
                     )
 
     class Float(Abc):
@@ -337,15 +330,14 @@ class SimpleFaker:
                 if not self.array:
                     return round(self.rng.uniform(self.min, self.max), self.round)
                 else:
-                    return "ARRAY[%s]" % ",".join(
-                        f"{x}"
-                        for x in [
-                            round(self.rng.uniform(self.min, self.max), self.round)
+                    return "{%s}" % ",".join(
+                        [
+                            str(round(self.rng.uniform(self.min, self.max), self.round))
                             for _ in range(self.array)
                         ]
                     )
 
-    class Bytes(String):
+    class Bytes(Abc):
         """Iterator that yields a random byte array"""
 
         def __init__(
@@ -356,20 +348,40 @@ class SimpleFaker:
             array: int = 0,
         ):
             self.size = size
-            super().__init__(
-                min=self.size, max=self.size, null_pct=null_pct, seed=seed, array=array
+            super().__init__(seed, null_pct, array)
+
+            # make translation table from 0..255 to hex chars 'abcdef0123456789'
+            self.hex_tbl = bytes.maketrans(
+                bytearray(range(256)),
+                bytearray(
+                    [ord(b"a") + b % 6 for b in range(160)]
+                    + [ord(b"0") + b % 10 for b in range(96)]
+                ),
             )
 
         def __next__(self):
-            v = super().__next__()
-            if not v:
+            if self.null_pct and self.rng.random() < self.null_pct:
                 return ""
-            if not self.array:
-                return f"\\\\x{v}"
             else:
-                return "ARRAY[%s]" % ",".join(
-                    [f"'\\\\x{x[1:]}" for x in v[6:-1].split(",")]
-                )
+                if not self.array:
+                    return "\\x" + (
+                        self.rng.getrandbits(8 * self.size)
+                        .to_bytes(self.size, "big")
+                        .translate(self.hex_tbl)
+                        .decode()
+                    )
+
+                else:
+                    return "{%s}" % ",".join(
+                        f'"\\\\x{x}"'
+                        for x in [
+                            self.rng.getrandbits(self.size * 8)
+                            .to_bytes(self.size, "big")
+                            .translate(self.hex_tbl)
+                            .decode()
+                            for _ in range(self.array)
+                        ]
+                    )
 
     class Choice(Abc):
         """Iterator that yields 1 item from a list"""
@@ -399,9 +411,8 @@ class SimpleFaker:
                         cum_weights=self.cum_weights,
                     )[0]
                 else:
-                    return "ARRAY[%s]" % ",".join(
-                        f"'{x}'"
-                        for x in [
+                    return "{%s}" % ",".join(
+                        [
                             self.rng.choices(
                                 self.population,
                                 weights=self.weights,
@@ -547,7 +558,7 @@ class SimpleFaker:
         start: str = args.get("start", "")
         end: str = args.get("end", "")
         prefix: str = args.get("prefix", "")
-        format: str = args.get("format","")
+        format: str = args.get("format", "")
         micros: bool = args.get("micros", False)
 
         # integer/float
@@ -556,9 +567,9 @@ class SimpleFaker:
         round: int = args.get("round", 2)
 
         # choice
-        population: list = args.get("population", [])
-        weights: list = args.get("weights", [])
-        cum_weights: list = args.get("cum_weights", [])
+        population: list = args.get("population", ["a", "b", "c"])
+        weights: list = args.get("weights", None)
+        cum_weights: list = args.get("cum_weights", None)
 
         # constant
         value: str = args.get("value", "")
@@ -623,7 +634,9 @@ class SimpleFaker:
             return [SimpleFaker.Constant(value, seed, null_pct) for seed in seeds]
         elif type == "sequence":
             div = int(count / exec_threads)
-            return [SimpleFaker.Sequence(div * x + int(start)) for x in range(exec_threads)]
+            return [
+                SimpleFaker.Sequence(div * x + int(start)) for x in range(exec_threads)
+            ]
         elif type == "bit":
             div = int(count / exec_threads)
             return [
@@ -673,22 +686,30 @@ class SimpleFaker:
             suffix = ".csv"
 
         for x in range(count):
-            pd.DataFrame(
-                [
-                    row
-                    for row in [
-                        [next(x) for x in generators] for _ in range(iterations)
-                    ]
-                ],
-                columns=col_names,
-            ).sort_values(by=sort_by).to_csv(
-                basename + "_" + str(x) + suffix,
-                quoting=csv.QUOTE_MINIMAL,
-                sep=separator,
-                header=False,
-                index=False,
-                compression=compression,
-            )
+            try:
+                pd.DataFrame(
+                    [
+                        row
+                        for row in [
+                            [next(x) for x in generators] for _ in range(iterations)
+                        ]
+                    ],
+                    columns=col_names,
+                ).sort_values(by=sort_by).to_csv(
+                    basename + "_" + str(x) + suffix,
+                    quoting=csv.QUOTE_MINIMAL,
+                    sep=separator,
+                    header=False,
+                    index=False,
+                    compression=compression,
+                )
+            except csv.Error as e:
+                logger.error(e)
+                if e.args[0] == "need to escape, but no escapechar set":
+                    logger.error(
+                        f"You cannot use the selected delimiter '{separator}'. Consider using another char or the the tab key."
+                    )
+
             logger.debug(f"Saved file '{basename + '_' + str(x) + suffix}'")
 
         # remaining rows, if any

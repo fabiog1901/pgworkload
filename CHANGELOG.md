@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 0.1.12
+
+- added KV workload.
+- SimpleFaker: fixed representation of ARRAY objects.
+
 ## 0.1.11
 
 - SimpleFaker: added `prefix` to `string` generator.

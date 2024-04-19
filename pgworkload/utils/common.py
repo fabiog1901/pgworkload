@@ -45,7 +45,8 @@ RESERVED_WORDS = [
 
 DEFAULT_ARRAY_COUNT = 3
 SUPPORTED_DBMS = ["PostgreSQL", "CockroachDB"]
-
+NOT_NULL_MIN = 20
+NOT_NULL_MAX = 40
 
 logger = logging.getLogger("pgworkload")
 
@@ -345,7 +346,9 @@ def ddl_to_yaml(ddl: str):
                 "args": {
                     "seed": random.random(),
                     "null_pct": (
-                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                        0.0
+                        if is_not_null
+                        else round(random.randint(NOT_NULL_MIN, NOT_NULL_MAX) / 100, 2)
                     ),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
@@ -368,7 +371,9 @@ def ddl_to_yaml(ddl: str):
                     "max": 1000000,
                     "seed": random.random(),
                     "null_pct": (
-                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                        0.0
+                        if is_not_null
+                        else round(random.randint(NOT_NULL_MIN, NOT_NULL_MAX) / 100, 2)
                     ),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
@@ -396,7 +401,9 @@ def ddl_to_yaml(ddl: str):
                     "prefix": "",
                     "seed": random.random(),
                     "null_pct": (
-                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                        0.0
+                        if is_not_null
+                        else round(random.randint(NOT_NULL_MIN, NOT_NULL_MAX) / 100, 2)
                     ),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
@@ -434,7 +441,9 @@ def ddl_to_yaml(ddl: str):
                     "round": _round,
                     "seed": random.random(),
                     "null_pct": (
-                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                        0.0
+                        if is_not_null
+                        else round(random.randint(NOT_NULL_MIN, NOT_NULL_MAX) / 100, 2)
                     ),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
@@ -449,7 +458,9 @@ def ddl_to_yaml(ddl: str):
                     "micros": False,
                     "seed": random.random(),
                     "null_pct": (
-                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                        0.0
+                        if is_not_null
+                        else round(random.randint(NOT_NULL_MIN, NOT_NULL_MAX) / 100, 2)
                     ),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
@@ -463,7 +474,9 @@ def ddl_to_yaml(ddl: str):
                     "max": 50,
                     "seed": random.random(),
                     "null_pct": (
-                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                        0.0
+                        if is_not_null
+                        else round(random.randint(NOT_NULL_MIN, NOT_NULL_MAX) / 100, 2)
                     ),
                 },
             }
@@ -477,7 +490,9 @@ def ddl_to_yaml(ddl: str):
                     "format": "%Y-%m-%d",
                     "seed": random.random(),
                     "null_pct": (
-                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                        0.0
+                        if is_not_null
+                        else round(random.randint(NOT_NULL_MIN, NOT_NULL_MAX) / 100, 2)
                     ),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
@@ -492,7 +507,9 @@ def ddl_to_yaml(ddl: str):
                     "format": "%Y-%m-%d %H:%M:%S.%f",
                     "seed": random.random(),
                     "null_pct": (
-                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                        0.0
+                        if is_not_null
+                        else round(random.randint(NOT_NULL_MIN, NOT_NULL_MAX) / 100, 2)
                     ),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
@@ -504,7 +521,9 @@ def ddl_to_yaml(ddl: str):
                 "args": {
                     "seed": random.random(),
                     "null_pct": (
-                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                        0.0
+                        if is_not_null
+                        else round(random.randint(NOT_NULL_MIN, NOT_NULL_MAX) / 100, 2)
                     ),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
@@ -521,7 +540,9 @@ def ddl_to_yaml(ddl: str):
                     "size": _size,
                     "seed": random.random(),
                     "null_pct": (
-                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                        0.0
+                        if is_not_null
+                        else round(random.randint(NOT_NULL_MIN, NOT_NULL_MAX) / 100, 2)
                     ),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
@@ -534,7 +555,9 @@ def ddl_to_yaml(ddl: str):
                     "size": 20,
                     "seed": random.random(),
                     "null_pct": (
-                        0.0 if is_not_null else round(random.randint(20, 80) / 100, 2)
+                        0.0
+                        if is_not_null
+                        else round(random.randint(NOT_NULL_MIN, NOT_NULL_MAX) / 100, 2)
                     ),
                     "array": DEFAULT_ARRAY_COUNT if is_array else 0,
                 },
@@ -641,7 +664,7 @@ def ddl_to_yaml(ddl: str):
     d = {}
     for stmt in stmts:
         table_name, table_list = get_table_name_and_table_list(
-            stmt, count=1000, sort_by=[]
+            stmt, count=100, sort_by=[]
         )
         d[table_name] = table_list
 
