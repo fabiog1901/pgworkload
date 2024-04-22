@@ -3,54 +3,78 @@ import random
 import time
 import uuid
 
+COL_TYPES = ["bytes", "uuid", "int", "string"]
+
 
 class Kv:
     def __init__(self, args: dict):
-        # default think_time is 10ms
+
+        # ARGS
         self.think_time: float = float(args.get("think_time", 10) / 1000)
-
-        # default batch_size is 1
         self.batch_size: int = int(args.get("batch_size", 1))
+        self.cycle_size: int = int(args.get("cycle_size", 100))
+        self.table_name: str = args.get("table_name", "kv")
+        self.key_size: int = int(args.get("key_size", 32))
+        self.value_size: int = int(args.get("value_size", 256))
+        self.key_type: str = args.get("key_type", "bytes")
+        self.value_type: str = args.get("value_type", "bytes")
 
-        self.key_size: int = int(args.get("key_size", 100))
-        self.payload_size: int = int(args.get("payload_size", 100))
-
-        self.mode: str = args.get("mode", "bytes")
-
-        if self.mode not in ["bytes", "uuid", "int"]:
+        # checks
+        if self.key_type not in COL_TYPES:
             raise ValueError(
-                f"The selected mode '{self.mode}' is invalid. The possible values are 'bytes', 'uuid', 'int'."
+                f"The selected key_type '{self.key_type}' is invalid. The possible values are 'bytes', 'uuid', 'int', 'string'."
             )
 
+        if self.value_type not in COL_TYPES:
+            raise ValueError(
+                f"The selected value_type '{self.key_type}' is invalid. The possible values are 'bytes', 'uuid', 'int', 'string'."
+            )
+
+        # make translation table from 0..255 to 97..122
+        self.tbl = bytes.maketrans(
+            bytearray(range(256)),
+            bytearray(
+                [ord(b"a") + b % 26 for b in range(113)]
+                + [ord(b"0") + b % 10 for b in range(30)]
+                + [ord(b"A") + b % 26 for b in range(113)]
+            ),
+        )
+
     def run(self):
-        return [self.insert_bytes, self.think] * 100
+        return [self.insert_kv, self.think] * self.cycle_size
 
     def think(self, conn: psycopg.Connection):
         time.sleep(self.think_time)
 
-    def __get_key(self):
-        if self.mode == "bytes":
-            return random.getrandbits(8 * self.key_size).to_bytes(self.key_size, "big")
-        elif self.mode == "uuid":
+    def __get_data(self, data_type: str, size: int):
+        if data_type == "bytes":
+            return random.getrandbits(8 * size).to_bytes(size, "big")
+        elif data_type == "uuid":
             return uuid.uuid4()
-        elif self.mode == "int":
-            return random.randint(0, 1e18)
+        elif data_type == "int":
+            return random.randint(0, 2**63 - 1)
+        elif data_type == "string":
+            return (
+                random.getrandbits(8 * size)
+                .to_bytes(size, "big")
+                .translate(self.tbl)
+                .decode()
+            )
 
-    def insert_bytes(self, conn: psycopg.Connection):
-        placeholders = "(%s, %s)," * self.batch_size
-
+    def insert_kv(self, conn: psycopg.Connection):
         with conn.cursor() as cur:
-            stmt = f"insert into kv_{self.mode} (k, v)  values {placeholders[:-1]}"
-
             args = []
             for _ in range(self.batch_size):
                 args.extend(
                     [
-                        self.__get_key(),
-                        random.getrandbits(8 * self.payload_size).to_bytes(
-                            self.payload_size, "big"
-                        ),
+                        self.__get_data(self.key_type, self.key_size),
+                        self.__get_data(self.value_type, self.value_size),
                     ]
                 )
 
-            cur.execute(stmt, tuple(args))
+            cur.execute(
+                f"INSERT INTO {self.table_name} (k, v)  VALUES {'(%s, %s),' * self.batch_size}"[
+                    :-1
+                ],
+                args,
+            )

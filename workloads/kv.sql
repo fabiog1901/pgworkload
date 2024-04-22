@@ -1,20 +1,7 @@
-CREATE TABLE kv_int (
-    k INT8 NOT NULL,
-    v BYTES NOT NULL,
+-- choose desired table name and column types
+CREATE TABLE <table_name> (
+    k <col_type> NOT NULL,
+    v <col_type> NOT NULL,
     ts TIMESTAMPTZ NOT NULL DEFAULT NOW():::TIMESTAMPTZ,
-    CONSTRAINT kv_int_pkey PRIMARY KEY (k ASC)
-);
-
-CREATE TABLE kv_uuid (
-    k UUID NOT NULL,
-    v BYTES NOT NULL,
-    ts TIMESTAMPTZ NOT NULL DEFAULT NOW():::TIMESTAMPTZ,
-    CONSTRAINT kv_uuid_pkey PRIMARY KEY (k ASC)
-);
-
-CREATE TABLE kv_bytes (
-    k BYTES NOT NULL,
-    v BYTES NOT NULL,
-    ts TIMESTAMPTZ NOT NULL DEFAULT NOW():::TIMESTAMPTZ,
-    CONSTRAINT kv_bytes_pkey PRIMARY KEY (k ASC)
+    CONSTRAINT pk PRIMARY KEY (k ASC)
 );
