@@ -38,3 +38,14 @@ Then run `pgworkload` using these args:
 pgworkload run [...] \
   --args '{"key_type":"int", "value_type":"string", "value_size":50, "batch_size":16, "table_name":"kv_int_str"}'
 ```
+
+And this is the sample data inserted
+
+```sql
+> select * from kv_int_str limit 2;                                                                          
+         k         |                         v
+-------------------+-----------------------------------------------------
+   514985589634278 | bVXvph5AzVtaHzbpdbteRE9QWAExcB3qbmiY1a4FFhgFIGDeyy
+  1384392319947339 | c0pOG44hvdLMxJR85hSHJvcnhwBhGOLGaDzgxZBcgUSadCuyza
+(2 rows)
+```
