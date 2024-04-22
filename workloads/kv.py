@@ -5,6 +5,7 @@ import time
 import uuid
 
 COL_TYPES = ["bytes", "uuid", "int", "string"]
+WRITE_MODES = ["insert", "upsert", "do_nothing"]
 
 
 class Kv:
@@ -22,8 +23,9 @@ class Kv:
         self.seed: str = args.get("seed", None)
         self.read_pct: float = float(args.get("read_pct", 0) / 100)
         self.key_pool_size: int = int(args.get("key_pool_size", 10000))
+        self.write_mode: str = args.get("write_mode", "insert")
 
-        # checks
+        # type checks
         if self.key_type not in COL_TYPES:
             raise ValueError(
                 f"The selected key_type '{self.key_type}' is invalid. The possible values are 'bytes', 'uuid', 'int', 'string'."
@@ -31,11 +33,25 @@ class Kv:
 
         if self.value_type not in COL_TYPES:
             raise ValueError(
-                f"The selected value_type '{self.key_type}' is invalid. The possible values are 'bytes', 'uuid', 'int', 'string'."
+                f"The selected value_type '{self.value_type}' is invalid. The possible values are 'bytes', 'uuid', 'int', 'string'."
             )
 
+        # write_mode checks
+        if self.write_mode not in WRITE_MODES:
+            raise ValueError(
+                f"The selected write_mode '{self.write_mode}' is invalid. The possible values are 'insert', 'upsert', 'do_nothing'."
+            )
+
+        self.command = "INSERT"
+        if self.write_mode == "upsert":
+            self.command = "UPSERT"
+
+        self.suffix = ""
+        if self.write_mode == "do_nothing":
+            self.suffix = " ON CONFLICT DO NOTHING"
+
         # create random generator
-        # Not implremented as it needs a FR in pgworkload
+        # Not implemented as it needs a FR in pgworkload
         # self.rng = random.Random(int(self.seed) if self.seed else None)
         self.rng = random.Random(None)
 
@@ -57,15 +73,15 @@ class Kv:
 
     def run(self):
         if random.random() < self.read_pct:
-            return [self.read, self.think] * self.cycle_size
-        return [self.insert_kv, self.think] * self.cycle_size
+            return [self.read_kv, self.think] * self.cycle_size
+        return [self.write_kv, self.think] * self.cycle_size
 
     def think(self, conn: psycopg.Connection):
         time.sleep(self.think_time)
 
-    def read(self, conn: psycopg.Connection):
+    def read_kv(self, conn: psycopg.Connection):
         with conn.cursor() as cur:
-            d = cur.execute(
+            cur.execute(
                 f"SELECT * FROM {self.table_name} WHERE k = %s",
                 (random.choice(self.key_pool),),
             ).fetchone()
@@ -85,7 +101,7 @@ class Kv:
                 .decode()
             )
 
-    def insert_kv(self, conn: psycopg.Connection):
+    def write_kv(self, conn: psycopg.Connection):
         with conn.cursor() as cur:
             args = []
             for _ in range(self.batch_size):
@@ -99,8 +115,9 @@ class Kv:
                 )
 
             cur.execute(
-                f"INSERT INTO {self.table_name} (k, v)  VALUES {'(%s, %s),' * self.batch_size}"[
+                f"{self.command} INTO {self.table_name} (k, v) VALUES {'(%s, %s),' * self.batch_size}"[
                     :-1
-                ],
+                ]
+                + self.suffix,
                 args,
             )
