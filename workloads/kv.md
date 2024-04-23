@@ -169,7 +169,7 @@ We executed 76 inserts and 5 deletes.
 The total shows we have 71 rows in our table.
 
 ```sql
-> select * from compkv;                                                                                                                                                                                                                                      
+> select * from compkv;
                    k                   | k1  |   v   |  v1  |         v2          |              ts
 ---------------------------------------+-----+-------+------+---------------------+--------------------------------
   015e8d0f-f334-42cc-ba96-4be9ed1b5bde | ywm | Gs9cZ | \xc0 | 4875346769445311596 | 2024-04-23 18:16:12.684904+00
