@@ -16,9 +16,12 @@ class Kv:
         self.cycle_size: int = int(args.get("cycle_size", 1))
         self.table_name: str = args.get("table_name", "kv")
         self.key_size: int = int(args.get("key_size", 32))
-        self.value_size: int = int(args.get("value_size", 256))
+        self.value_sizes: list = [
+            int(x) if x else None
+            for x in str(args.get("value_sizes", "256")).split(",")
+        ]
         self.key_type: str = args.get("key_type", "bytes")
-        self.value_type: str = args.get("value_type", "bytes")
+        self.value_types: list = args.get("value_types", "bytes").split(",")
         self.seed: str = args.get("seed", None)
         self.read_pct: float = float(args.get("read_pct", 0) / 100)
         self.update_pct: float = self.read_pct + float(args.get("update_pct", 0) / 100)
@@ -31,10 +34,13 @@ class Kv:
                 f"The selected key_type '{self.key_type}' is invalid. The possible values are 'bytes', 'uuid', 'int', 'string'."
             )
 
-        if self.value_type not in COL_TYPES:
-            raise ValueError(
-                f"The selected value_type '{self.value_type}' is invalid. The possible values are 'bytes', 'uuid', 'int', 'string'."
-            )
+        for t in self.value_types:
+            if t not in COL_TYPES:
+                raise ValueError(
+                    f"The selected value_type '{t}' is invalid. The possible values are 'bytes', 'uuid', 'int', 'string'."
+                )
+
+        self.value_types_and_sizes = dict(zip(self.value_types, self.value_sizes))
 
         # write_mode checks
         if self.write_mode not in WRITE_MODES:
@@ -49,6 +55,11 @@ class Kv:
         self.suffix = ""
         if self.write_mode == "do_nothing":
             self.suffix = " ON CONFLICT DO NOTHING"
+
+        # placeholders  
+        columns_ph = "%s," * len(self.value_types)
+        rows_ph = f"(%s,{columns_ph[:-1]})," * self.batch_size
+        self.placeholders = rows_ph[:-1]
 
         # create random generator
         # Not implemented as it needs a FR in pgworkload
@@ -107,9 +118,9 @@ class Kv:
     def update_kv(self, conn: psycopg.Connection):
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE {self.table_name} SET v = %s WHERE k = %s",
+                f"UPDATE {self.table_name} SET v = %s WHERE k = %s returning *",
                 (
-                    self.__get_data(self.value_type, self.value_size),
+                    self.__get_data(self.value_types[0], self.value_sizes[0]),
                     random.choice(self.key_pool),
                 ),
             )
@@ -120,17 +131,15 @@ class Kv:
             for _ in range(self.batch_size):
                 k = self.__get_data(self.key_type, self.key_size)
                 self.key_pool.append(k)
+                args.append(k)
                 args.extend(
                     [
-                        k,
-                        self.__get_data(self.value_type, self.value_size),
+                        self.__get_data(t, s)
+                        for t, s in self.value_types_and_sizes.items()
                     ]
                 )
 
             cur.execute(
-                f"{self.command} INTO {self.table_name} (k, v) VALUES {'(%s, %s),' * self.batch_size}"[
-                    :-1
-                ]
-                + self.suffix,
+                f"{self.command} INTO {self.table_name} VALUES {self.placeholders} {self.suffix}",
                 args,
             )
