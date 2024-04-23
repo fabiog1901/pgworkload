@@ -10,11 +10,10 @@ WRITE_MODES = ["insert", "upsert", "do_nothing"]
 
 class Kv:
     def __init__(self, args: dict):
-
         # ARGS
         self.think_time: float = float(args.get("think_time", 10) / 1000)
         self.batch_size: int = int(args.get("batch_size", 1))
-        self.cycle_size: int = int(args.get("cycle_size", 100))
+        self.cycle_size: int = int(args.get("cycle_size", 1))
         self.table_name: str = args.get("table_name", "kv")
         self.key_size: int = int(args.get("key_size", 32))
         self.value_size: int = int(args.get("value_size", 256))
@@ -22,6 +21,7 @@ class Kv:
         self.value_type: str = args.get("value_type", "bytes")
         self.seed: str = args.get("seed", None)
         self.read_pct: float = float(args.get("read_pct", 0) / 100)
+        self.update_pct: float = self.read_pct + float(args.get("update_pct", 0) / 100)
         self.key_pool_size: int = int(args.get("key_pool_size", 10000))
         self.write_mode: str = args.get("write_mode", "insert")
 
@@ -72,19 +72,15 @@ class Kv:
         )
 
     def run(self):
-        if random.random() < self.read_pct:
-            return [self.read_kv, self.think] * self.cycle_size
-        return [self.write_kv, self.think] * self.cycle_size
+        rnd = random.random()
+        if rnd < self.read_pct:
+            return [self.read_kv, self.__think__] * self.cycle_size
+        elif rnd < self.update_pct:
+            return [self.update_kv, self.__think__] * self.cycle_size
+        return [self.write_kv, self.__think__] * self.cycle_size
 
-    def think(self, conn: psycopg.Connection):
+    def __think__(self, conn: psycopg.Connection):
         time.sleep(self.think_time)
-
-    def read_kv(self, conn: psycopg.Connection):
-        with conn.cursor() as cur:
-            cur.execute(
-                f"SELECT * FROM {self.table_name} WHERE k = %s",
-                (random.choice(self.key_pool),),
-            ).fetchone()
 
     def __get_data(self, data_type: str, size: int):
         if data_type == "bytes":
@@ -99,6 +95,23 @@ class Kv:
                 .to_bytes(size, "big")
                 .translate(self.tbl)
                 .decode()
+            )
+
+    def read_kv(self, conn: psycopg.Connection):
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT * FROM {self.table_name} WHERE k = %s",
+                (random.choice(self.key_pool),),
+            ).fetchone()
+
+    def update_kv(self, conn: psycopg.Connection):
+        with conn.cursor() as cur:
+            cur.execute(
+                f"UPDATE {self.table_name} SET v = %s WHERE k = %s",
+                (
+                    self.__get_data(self.value_type, self.value_size),
+                    random.choice(self.key_pool),
+                ),
             )
 
     def write_kv(self, conn: psycopg.Connection):
