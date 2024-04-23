@@ -30,6 +30,7 @@ class Kv:
         )
         self.key_pool_size: int = int(args.get("key_pool_size", 10000))
         self.write_mode: str = args.get("write_mode", "insert")
+        self.aost: str = args.get("aost", "")
 
         # type checks
         if self.key_type not in COL_TYPES:
@@ -74,7 +75,14 @@ class Kv:
             [self.__get_data(self.key_type, self.key_size)],
             maxlen=self.key_pool_size,
         )
-
+        
+        # AOST
+        if self.aost:
+            if self.aost == "fr":
+                self.aost = "AS OF SYSTEM TIME follower_read_timestamp()"
+            else:
+                self.aost = f"AS OF SYSTEM TIME '{self.aost}'"
+                
         # make translation table from 0..255 to 97..122
         self.tbl = bytes.maketrans(
             bytearray(range(256)),
@@ -116,7 +124,7 @@ class Kv:
     def read_kv(self, conn: psycopg.Connection):
         with conn.cursor() as cur:
             cur.execute(
-                f"SELECT * FROM {self.table_name} WHERE k = %s",
+                f"SELECT * FROM {self.table_name} {self.aost} WHERE k = %s",
                 (random.choice(self.key_pool),),
             ).fetchone()
 

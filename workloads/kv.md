@@ -37,6 +37,8 @@ Here are the avaliable **arguments** to pass at runtime:
 | delete_pct    | The percent of operations that are DELETE statements           | 0       |
 | key_pool_size | The size of the list to pick keys from for read operation      | 10000   |
 | write_mode    | `insert`, `update`, `do_nothing` for `ON CONFLICT DO NOTHING`  | insert  |
+| aost          | Value to pass to the `AS OF SYSTEM TIME` clause.               |         |  
+|               | Set to `fr` for _follower_read_timestamp()_                    |         |
 
 ## Examples
 
