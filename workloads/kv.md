@@ -1,6 +1,6 @@
 # KV workload
 
-The KV workload allows you great flexibility when choosing the column types and sizes for both the key and the value column.
+The KV workload allows you great flexibility when choosing the column types and sizes for both the key and the value columns.
 
 Available data types are `bytes` (default), `int`, `uuid`, `string`.
 
@@ -9,14 +9,15 @@ For types `bytes` and `string`, you can optionally choose the payload size; it d
 You can configure the `batch_size` (defaults to 1) as well as the `cycle_size` (defaults to 1).
 The `batch_size` configures the size of the multi-row `INSERT` statement, while `cycle_size` configures the size of one `pgworkload` iteration cycle.
 
-You can also fine-tune your read/write/update/delete ratio using the `read_pct`, `update_pct` and `delete_pct` arguments.
-Run your SELECTs as historical (`AOST`) queries with argument `aost`, check example 3.
+You can also fine-tune your read/write/update/delete ratio using the `read_pct`, `update_pct` and `delete_pct` arguments, and have the SELECTs executed as historical (`AOST`) queries with argument `aost`.
+
 Configuring a large `key_pool_size` allows your read to be more random, but the pool will take longer to fill with keys you have inserted, and it will consume more memory.
 Conversely, a smaller pool is cheaper on resources and fills up quicklier, but there will be fewer keys to pick from.
-
 The pool is a fixed size [`deque` object](https://docs.python.org/3/library/collections.html#collections.deque): as you insert new keys into the table, the keys are added to the deque.
 When you have added more keys than the pre-defined size, older keys are pushed out and only the most recent keys are kept.
-During a read operation, a random value from the deque is picked as the predicate for the SELECT statement.
+During a read operation, a random value from the deque is picked as the predicate for the SELECT/UPDATE/DELETE statement.
+
+You are not bound to a simple Key and Value workload: you can elect to have multiple columns as your Primary Key, aka a composite key, and multiple columns for your values.
 
 ## Args
 
