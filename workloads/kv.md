@@ -48,6 +48,9 @@ Here are the avaliable **arguments** to pass at runtime:
 
 Run a KV workload against a table `kv_int_str` that uses `INT` as key and `STRING` as value of 50 chars, in batches of 16.
 
+First, you need to create your target table.
+The KV workload will not create the schema for you.
+
 ```sql
 CREATE TABLE kv_int_str (k INT8 PRIMARY KEY, v STRING);
 ```
@@ -74,7 +77,7 @@ And this is the sample data inserted
 
 Run a KV workload with 3 value columns (STRING, BYTES and INT) with a mix of selects (80%), updates (10%) and upserts.
 
-Please note, the KV workload expects the key column to be called `k` and the first of the value columns to be callec `v`.
+Please note, the KV workload expects the key column to be called `k` and the first of the value columns to be called `v`.
 Any additional column might be called with any name.
 
 Also, the UPDATE command only updates the `v` column.
@@ -143,7 +146,7 @@ CREATE TABLE compkv (
 );
 ```
 
-As in the previous example, notice the comman in the `key_sizes`.
+As in the previous example, notice the comma in the `key_sizes`.
 
 ```bash
 pgworkload run [...] \
