@@ -9,7 +9,8 @@ For types `bytes` and `string`, you can optionally choose the payload size; it d
 You can configure the `batch_size` (defaults to 1) as well as the `cycle_size` (defaults to 1).
 The `batch_size` configures the size of the multi-row `INSERT` statement, while `cycle_size` configures the size of one `pgworkload` iteration cycle.
 
-You can also fine-tune your read/write/update ratio using the `read_pct` and `update_pct` arguments.
+You can also fine-tune your read/write/update/delete ratio using the `read_pct`, `update_pct` and `delete_pct` arguments.
+Run your SELECTs as historical (`AOST`) queries with argument `aost`, check example 3.
 Configuring a large `key_pool_size` allows your read to be more random, but the pool will take longer to fill with keys you have inserted, and it will consume more memory.
 Conversely, a smaller pool is cheaper on resources and fills up quicklier, but there will be fewer keys to pick from.
 
