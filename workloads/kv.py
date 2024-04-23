@@ -15,13 +15,15 @@ class Kv:
         self.batch_size: int = int(args.get("batch_size", 1))
         self.cycle_size: int = int(args.get("cycle_size", 1))
         self.table_name: str = args.get("table_name", "kv")
-        self.key_size: int = int(args.get("key_size", 32))
+        self.key_types: list = args.get("key_types", "bytes").split(",")
+        self.key_sizes: list = [
+            int(x) if x else None for x in str(args.get("key_sizes", "32")).split(",")
+        ]
+        self.value_types: list = args.get("value_types", "bytes").split(",")
         self.value_sizes: list = [
             int(x) if x else None
             for x in str(args.get("value_sizes", "256")).split(",")
         ]
-        self.key_type: str = args.get("key_type", "bytes")
-        self.value_types: list = args.get("value_types", "bytes").split(",")
         self.seed: str = args.get("seed", None)
         self.read_pct: float = float(args.get("read_pct", 0) / 100)
         self.update_pct: float = self.read_pct + float(args.get("update_pct", 0) / 100)
@@ -33,10 +35,11 @@ class Kv:
         self.aost: str = args.get("aost", "")
 
         # type checks
-        if self.key_type not in COL_TYPES:
-            raise ValueError(
-                f"The selected key_type '{self.key_type}' is invalid. The possible values are 'bytes', 'uuid', 'int', 'string'."
-            )
+        for k in self.key_types:
+            if k not in COL_TYPES:
+                raise ValueError(
+                    f"The selected key_type '{k}' is invalid. The possible values are 'bytes', 'uuid', 'int', 'string'."
+                )
 
         for t in self.value_types:
             if t not in COL_TYPES:
@@ -44,6 +47,7 @@ class Kv:
                     f"The selected value_type '{t}' is invalid. The possible values are 'bytes', 'uuid', 'int', 'string'."
                 )
 
+        self.key_types_and_sizes = dict(zip(self.key_types, self.key_sizes))
         self.value_types_and_sizes = dict(zip(self.value_types, self.value_sizes))
 
         # write_mode checks
@@ -61,28 +65,19 @@ class Kv:
             self.suffix = " ON CONFLICT DO NOTHING"
 
         # placeholders
-        columns_ph = "%s," * len(self.value_types)
-        rows_ph = f"(%s,{columns_ph[:-1]})," * self.batch_size
-        self.placeholders = rows_ph[:-1]
+        self.key_id = "k"
+        for i in range(len(self.key_types) - 1):
+            self.key_id = f"{self.key_id},k{i+1}"
+
+        self.key_ph = ("%s," * len(self.key_types))[:-1]
+        value_ph = ("%s," * len(self.value_types))[:-1]
+        self.placeholders = (f"({self.key_ph},{value_ph})," * self.batch_size)[:-1]
 
         # create random generator
         # Not implemented as it needs a FR in pgworkload
         # self.rng = random.Random(int(self.seed) if self.seed else None)
         self.rng = random.Random(None)
 
-        # create pool to pick the key from
-        self.key_pool = deque(
-            [self.__get_data(self.key_type, self.key_size)],
-            maxlen=self.key_pool_size,
-        )
-        
-        # AOST
-        if self.aost:
-            if self.aost == "fr":
-                self.aost = "AS OF SYSTEM TIME follower_read_timestamp()"
-            else:
-                self.aost = f"AS OF SYSTEM TIME '{self.aost}'"
-                
         # make translation table from 0..255 to 97..122
         self.tbl = bytes.maketrans(
             bytearray(range(256)),
@@ -92,6 +87,23 @@ class Kv:
                 + [ord(b"A") + b % 26 for b in range(113)]
             ),
         )
+
+        # create pool to pick the key from
+        self.key_pool = deque(
+            (
+                tuple(
+                    self.__get_data(t, s) for t, s in self.key_types_and_sizes.items()
+                ),
+            ),
+            maxlen=self.key_pool_size,
+        )
+
+        # AOST
+        if self.aost:
+            if self.aost == "fr":
+                self.aost = "AS OF SYSTEM TIME follower_read_timestamp()"
+            else:
+                self.aost = f"AS OF SYSTEM TIME '{self.aost}'"
 
     def run(self):
         rnd = random.random()
@@ -124,17 +136,17 @@ class Kv:
     def read_kv(self, conn: psycopg.Connection):
         with conn.cursor() as cur:
             cur.execute(
-                f"SELECT * FROM {self.table_name} {self.aost} WHERE k = %s",
-                (random.choice(self.key_pool),),
+                f"SELECT * FROM {self.table_name} {self.aost} WHERE ({self.key_id}) = ({self.key_ph})",
+                random.choice(self.key_pool),
             ).fetchone()
 
     def update_kv(self, conn: psycopg.Connection):
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE {self.table_name} SET v = %s WHERE k = %s",
+                f"UPDATE {self.table_name} SET v = %s WHERE ({self.key_id}) = ({self.key_ph})",
                 (
                     self.__get_data(self.value_types[0], self.value_sizes[0]),
-                    random.choice(self.key_pool),
+                    *(random.choice(self.key_pool)),
                 ),
             )
 
@@ -142,9 +154,11 @@ class Kv:
         with conn.cursor() as cur:
             args = []
             for _ in range(self.batch_size):
-                k = self.__get_data(self.key_type, self.key_size)
+                k = tuple(
+                    [self.__get_data(t, s) for t, s in self.key_types_and_sizes.items()]
+                )
                 self.key_pool.append(k)
-                args.append(k)
+                args.extend(k)
                 args.extend(
                     [
                         self.__get_data(t, s)
@@ -166,4 +180,7 @@ class Kv:
         self.key_pool.remove(key)
 
         with conn.cursor() as cur:
-            cur.execute(f"DELETE FROM {self.table_name} WHERE k = %s", (key,))
+            cur.execute(
+                f"DELETE FROM {self.table_name} WHERE ({self.key_id}) = ({self.key_ph})",
+                key,
+            )

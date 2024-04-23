@@ -27,22 +27,22 @@ Here are the avaliable **arguments** to pass at runtime:
 | batch_size    | size of the multi-row INSERT/UPSERT                            | 1       |
 | cycle_size    | size of the pgworkload iteration                               | 1       |
 | table_name    | name of the table to insert into                               | kv      |
-| key_type      | data type (bytes, uuid, int, string)                           | bytes   |
-| key_size      | size of the key (bytes and string types only)                  | 32      |
-| value_types   | data type (bytes, uuid, int, string) comma separated list      | bytes   |
+| key_types     | data types (bytes, uuid, int, string) comma separated list     | bytes   |
+| key_sizes     | key sizes (bytes and string types only) comma separated list   | 32      |
+| value_types   | data types (bytes, uuid, int, string) comma separated list     | bytes   |
 | value_sizes   | value sizes (bytes and string types only) comma separated list | 256     |
 | ~~seed~~      | ~~the random generator seed number~~  COMING SOON!             |         |
-| read_pct      | The percent of operations that are SELECT statements           | 0       |
-| update_pct    | The percent of operations that are UPDATE statements           | 0       |
-| delete_pct    | The percent of operations that are DELETE statements           | 0       |
-| key_pool_size | The size of the list to pick keys from for read operation      | 10000   |
+| read_pct      | the percent of operations that are SELECT statements           | 0       |
+| update_pct    | the percent of operations that are UPDATE statements           | 0       |
+| delete_pct    | the percent of operations that are DELETE statements           | 0       |
+| key_pool_size | the size of the list to pick keys from for read operation      | 10000   |
 | write_mode    | `insert`, `update`, `do_nothing` for `ON CONFLICT DO NOTHING`  | insert  |
-| aost          | Value to pass to the `AS OF SYSTEM TIME` clause.               |         |  
-|               | Set to `fr` for _follower_read_timestamp()_                    |         |
+| aost          | value to pass to the `AS OF SYSTEM TIME` clause.               |         |  
+|               | set to `fr` for _follower_read_timestamp()_                    |         |
 
 ## Examples
 
-### Exemple 1
+### Exemple 1 - basic usage
 
 Run a KV workload against a table `kv_int_str` that uses `INT` as key and `STRING` as value of 50 chars, in batches of 16.
 
@@ -54,7 +54,7 @@ Then run `pgworkload` using these args:
 
 ```bash
 pgworkload run [...] \
-  --args '{"key_type":"int", "value_types":"string", "value_sizes":50, "batch_size":16, "table_name":"kv_int_str"}'
+  --args '{"key_types":"int", "value_types":"string", "value_sizes":50, "batch_size":16, "table_name":"kv_int_str"}'
 ```
 
 And this is the sample data inserted
@@ -68,9 +68,9 @@ And this is the sample data inserted
 (2 rows)
 ```
 
-### Example 2
+### Example 2 - multiple value columns
 
-Run a KV workload with 3 value columns (STRING, BYTES and INT) with a mix of selects (80%), updates (10%) and upserts
+Run a KV workload with 3 value columns (STRING, BYTES and INT) with a mix of selects (80%), updates (10%) and upserts.
 
 Please note, the KV workload expects the key column to be called `k` and the first of the value columns to be callec `v`.
 Any additional column might be called with any name.
@@ -92,7 +92,7 @@ Then run `pgworkload` using these args - notice the final comma in `value_sizes`
 
 ```bash
 pgworkload run [...] \
-  --args '{"key_type":"uuid", "value_types":"string,bytes,int", "value_sizes":"10,16,", "table_name":"k3v", "write_mode":"upsert", "read_pct":80, "update_pct":10}'
+  --args '{"key_types":"uuid", "value_types":"string,bytes,int", "value_sizes":"10,16,", "table_name":"k3v", "write_mode":"upsert", "read_pct":80, "update_pct":10}'
 ```
 
 Here's the output after 100 iterations: see the ops distribution in the `tot_ops` column
@@ -123,4 +123,53 @@ We executed 8 upserts:
   8c29ab71-00b5-4e26-a474-ec2c313d27f5 | dgL3akOzVN | \x823e36c5da639b76beb4435fc969c255 | 7197843808776724295 | 2024-04-23 15:15:45.725499+00
   8c8ebb32-72a7-4005-9c4a-8dc98b2917f4 | SpBaDamnlA | \xdcb7c5c797f5bdc69c71e27b4e27b0ff | 3046560917210849958 | 2024-04-23 15:15:46.182559+00
 (8 rows)
+```
+
+### Example 3 - composite key and multiple value columns
+
+Run a KV workload on a composite key, with a mix of DELETEs and AOST queries.
+
+```sql
+CREATE TABLE compkv (
+    k UUID NOT NULL,
+    k1 STRING NOT NULL, -- key columns must follow the pattern `k`+ 1, 2, 3, ...
+    v STRING NULL,
+    v1 BYTES NULL,
+    v2 INT8 NULL,
+    ts TIMESTAMPTZ NOT NULL DEFAULT now():::TIMESTAMPTZ ON UPDATE now():::TIMESTAMPTZ,
+    CONSTRAINT pk PRIMARY KEY (k ASC, k1 ASC) -- notice it's a composite key
+);
+```
+
+As in the previous example, notice the comman in the `key_sizes`.
+
+```bash
+pgworkload run [...] \
+  --args '{"table_name":"compkv", "key_types":"uuid,string", "key_sizes":",3", "value_types":"string,bytes,int", "value_sizes":"5,1,", "delete_pct": 10, "read_pct": 20, "aost":"-1s"}'
+```
+
+After 100 iterations
+
+```text
+id           elapsed    tot_ops    tot_ops/s    period_ops    period_ops/s    mean(ms)    p50(ms)    p90(ms)    p95(ms)    p99(ms)    pMax(ms)
+---------  ---------  ---------  -----------  ------------  --------------  ----------  ---------  ---------  ---------  ---------  ----------
+__cycle__          3        100        30.83           100            10         28.25      30.62      32.68      36.12      55.87       66.8
+__think__          3        100        30.82           100            10         11.35      11.23      12.54      12.56      12.59       12.59
+delete_kv          3          5         1.54             5             0.5       20.99      20.56      22.42      22.97      23.4        23.51
+read_kv            3         19         5.85            19             1.9        1.87       1.7        2.58       2.69       2.92        2.98
+write_kv           3         76        23.41            76             7.6       20.33      19.37      20.74      27.54      46.2        54.19
+```
+
+We executed 76 inserts and 5 deletes.
+The total shows we have 71 rows in our table.
+
+```sql
+> select * from compkv;                                                                                                                                                                                                                                      
+                   k                   | k1  |   v   |  v1  |         v2          |              ts
+---------------------------------------+-----+-------+------+---------------------+--------------------------------
+  015e8d0f-f334-42cc-ba96-4be9ed1b5bde | ywm | Gs9cZ | \xc0 | 4875346769445311596 | 2024-04-23 18:16:12.684904+00
+  [...]
+  f8173d3b-f287-4c88-98bc-dc68f606cc6e | qvy | jMdim | \xae | 6115621406519874297 | 2024-04-23 18:16:13.279258+00
+  fc599e29-c157-4b5b-a26f-f311096094c8 | 9R3 | OpvqD | \xc5 | 5290408709402028339 | 2024-04-23 18:16:12.359142+00
+(71 rows)
 ```
