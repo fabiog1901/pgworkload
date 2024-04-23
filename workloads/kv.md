@@ -34,6 +34,7 @@ Here are the avaliable **arguments** to pass at runtime:
 | ~~seed~~      | ~~the random generator seed number~~  COMING SOON!             |         |
 | read_pct      | The percent of operations that are SELECT statements           | 0       |
 | update_pct    | The percent of operations that are UPDATE statements           | 0       |
+| delete_pct    | The percent of operations that are DELETE statements           | 0       |
 | key_pool_size | The size of the list to pick keys from for read operation      | 10000   |
 | write_mode    | `insert`, `update`, `do_nothing` for `ON CONFLICT DO NOTHING`  | insert  |
 

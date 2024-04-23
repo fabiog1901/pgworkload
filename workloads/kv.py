@@ -25,6 +25,9 @@ class Kv:
         self.seed: str = args.get("seed", None)
         self.read_pct: float = float(args.get("read_pct", 0) / 100)
         self.update_pct: float = self.read_pct + float(args.get("update_pct", 0) / 100)
+        self.delete_pct: float = self.update_pct + float(
+            args.get("delete_pct", 0) / 100
+        )
         self.key_pool_size: int = int(args.get("key_pool_size", 10000))
         self.write_mode: str = args.get("write_mode", "insert")
 
@@ -56,7 +59,7 @@ class Kv:
         if self.write_mode == "do_nothing":
             self.suffix = " ON CONFLICT DO NOTHING"
 
-        # placeholders  
+        # placeholders
         columns_ph = "%s," * len(self.value_types)
         rows_ph = f"(%s,{columns_ph[:-1]})," * self.batch_size
         self.placeholders = rows_ph[:-1]
@@ -88,6 +91,8 @@ class Kv:
             return [self.read_kv, self.__think__] * self.cycle_size
         elif rnd < self.update_pct:
             return [self.update_kv, self.__think__] * self.cycle_size
+        elif rnd < self.delete_pct:
+            return [self.delete_kv, self.__think__] * self.cycle_size
         return [self.write_kv, self.__think__] * self.cycle_size
 
     def __think__(self, conn: psycopg.Connection):
@@ -118,7 +123,7 @@ class Kv:
     def update_kv(self, conn: psycopg.Connection):
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE {self.table_name} SET v = %s WHERE k = %s returning *",
+                f"UPDATE {self.table_name} SET v = %s WHERE k = %s",
                 (
                     self.__get_data(self.value_types[0], self.value_sizes[0]),
                     random.choice(self.key_pool),
@@ -143,3 +148,14 @@ class Kv:
                 f"{self.command} INTO {self.table_name} VALUES {self.placeholders} {self.suffix}",
                 args,
             )
+
+    def delete_kv(self, conn: psycopg.Connection):
+        # make sure to keep at least 1 item in the pool
+        if len(self.key_pool) <= 1:
+            return
+
+        key = random.choice(self.key_pool)
+        self.key_pool.remove(key)
+
+        with conn.cursor() as cur:
+            cur.execute(f"DELETE FROM {self.table_name} WHERE k = %s", (key,))
