@@ -36,7 +36,6 @@ Here are the avaliable **arguments** to pass at runtime:
 |               | types: bytes, uuid, int, string, fixed                         |         |
 | value_sizes   | value sizes (bytes and string types only) comma separated list | 256     |
 | fixed_value   | hardcoded value for type `fixed`                               |         |
-| ~~seed~~      | ~~the random generator seed number~~  COMING SOON!             |         |
 | read_pct      | the percent of operations that are SELECT statements           | 0       |
 | update_pct    | the percent of operations that are UPDATE statements           | 0       |
 | delete_pct    | the percent of operations that are DELETE statements           | 0       |
