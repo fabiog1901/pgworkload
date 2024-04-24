@@ -8,9 +8,7 @@ The goal of `pgworkload` is to ease the creation of workload scripts by providin
 
 The user has complete control of what statements the transactions actually execute, and what transactions are executed in which order.
 
-`pgworkload` can seed a database with random generated data, whose definition is supplied in a YAML file.
-
-A .sql file can be supplied to create the schema and run any special queries, eg. Zone Configuration changes.
+`pgworkload` can seed a database with random generated data, whose definition is supplied in a YAML file and can be extracted from a DDL SQL file.
 
 ## Example
 
@@ -177,14 +175,18 @@ There are 2 parameters that can be used to configure how many processes you want
 
 Example: if we set `--procs 4` and `--concurrency 10`, pgworkload will create as follows:
 
-- Process-1: MainThread + 2 extra threads. Total = 3
-- Process-2: MainThread + 2 extra threads. Total = 3
-- Process-3: MainThread + 1 extra thread.  Total = 2
-- Process-4: MainThread + 1 extra thread.  Total = 2
+- Process-1: MainThread + 1 extra threads. Total = 2
+- Process-2: MainThread + 1 extra threads. Total = 2
+- Process-3: MainThread + 2 extra thread.  Total = 3
+- Process-4: MainThread + 2 extra thread.  Total = 3
 
 Total workloads = 10
 
 This allows you to fine tune the count of Python processes and threads to fit your system.
+
+Furthermore, each _executing thread_ receives a unique ID (an integer).
+The ID is passed to the workload class with function `setup()`, along with the total count of threads, i.e. the value passed to `-c/--concurrency`.
+You can leverage the ID and the thread count in various ways, for example, to have each thread process a subset of a dataset.
 
 ## Generating CSV files
 

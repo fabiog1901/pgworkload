@@ -3,7 +3,6 @@ import psycopg
 import random
 import time
 import uuid
-import logging
 
 
 class Bank:
@@ -26,10 +25,13 @@ class Bank:
 
     # the setup() function is executed only once
     # when a new executing thread is started.
-    def setup(self, conn: psycopg.Connection):
+    # Also, the function is a vector to receive the excuting threads's unique id and the total thread count
+    def setup(self, conn: psycopg.Connection, id: int, total_thread_count: int):
         with conn.cursor() as cur:
-            cur.execute(f"select version()")
-            print("setup >>>> ", cur.fetchone())
+            print(
+                f"My thread ID is {id}. The total count of threads is {total_thread_count}"
+            )
+            print(cur.execute(f"select version()").fetchone())
 
     # the run() function returns a list of functions
     # that pgworkload will execute, sequentially.

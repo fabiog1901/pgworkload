@@ -131,8 +131,12 @@ def run(
     threads_per_proc = pgworkload.utils.common.get_threads_per_proc(procs, conc)
     ramp_interval = int(ramp / len(threads_per_proc))
 
-    processes: list[mp.Process] = []
+    # each Process must generate an ID for each of its threads,
+    # starting from the id_base_counter and incrementing by 1.
+    # for each Process' MainThread, the id_base_counter is also its id.
+    id_base_counter = 0
 
+    processes: list[mp.Process] = []
     for x in threads_per_proc:
         processes.append(
             mp.Process(
@@ -151,9 +155,13 @@ def run(
                     duration,
                     conn_duration,
                     disable_stats,
+                    conc,
+                    id_base_counter,
+                    id_base_counter,
                 ),
             )
         )
+        id_base_counter += x
 
     threading.Thread(
         target=__ramp_up, daemon=True, args=(processes, ramp_interval)
@@ -213,11 +221,14 @@ def worker(
     duration: int,
     conn_duration: int,
     disable_stats: bool,
+    conc: int,
+    id_base_counter: int = 0,
+    id: int = 0,
 ):
     """Process worker function to run the workload in a multiprocessing env
 
     Args:
-        thread_count(int): The number of threads to create
+        thread_count (int): The number of threads to create
         q (mp.Queue): queue to report query metrics
         kill_q (mp.Queue): queue to handle stopping the worker
         kill_q2 (mp.Queue): queue to handle stopping the worker
@@ -229,12 +240,16 @@ def worker(
         duration (int): seconds before returning
         conn_duration (int): seconds before restarting the database connection
         disable_stats: (bool): flag to send or not stats back to the mainthread
+        conc: (int): the total number of threads
+        id_base_counter (int): the base counter to generate ID for each Process
+        id (int): the ID of the thread
     """
     logger.setLevel(log_level)
 
-    threads: list[threading.Thread] = []
+    logger.debug(f"My ID is {id}")
 
-    for _ in range(thread_count):
+    threads: list[threading.Thread] = []
+    for i in range(thread_count):
         thread = threading.Thread(
             target=worker,
             daemon=True,
@@ -252,6 +267,9 @@ def worker(
                 duration,
                 conn_duration,
                 disable_stats,
+                conc,
+                None,
+                id_base_counter + i + 1,
             ),
         )
         thread.start()
@@ -304,7 +322,9 @@ def worker(
                     if hasattr(w, "setup") and callable(w.setup):
                         logger.debug("Executing setup() function")
                         pgworkload.utils.common.run_transaction(
-                            conn, lambda conn: w.setup(conn), max_retries=MAX_RETRIES
+                            conn,
+                            lambda conn: w.setup(conn, id, conc),
+                            max_retries=MAX_RETRIES,
                         )
                     else:
                         logger.debug("No setup() function found.")

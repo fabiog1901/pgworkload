@@ -106,6 +106,13 @@ class Kv:
             else:
                 self.aost = f"AS OF SYSTEM TIME '{self.aost}'"
 
+    def setup(self, conn: psycopg.Connection, id: int, total_thread_count: id):
+        with conn.cursor() as cur:
+            print(
+                f"My thread ID is {id}. The total count of threads is {total_thread_count}"
+            )
+            print(cur.execute(f"select version()").fetchone())
+
     def run(self):
         rnd = random.random()
         if rnd < self.read_pct:
