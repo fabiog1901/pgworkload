@@ -4,7 +4,7 @@ import random
 import time
 import uuid
 
-COL_TYPES = ["bytes", "uuid", "int", "string"]
+COL_TYPES = ["bytes", "uuid", "int", "string", "fixed"]
 WRITE_MODES = ["insert", "upsert", "do_nothing"]
 
 
@@ -33,18 +33,19 @@ class Kv:
         self.key_pool_size: int = int(args.get("key_pool_size", 10000))
         self.write_mode: str = args.get("write_mode", "insert")
         self.aost: str = args.get("aost", "")
+        self.fixed_value = args.get("fixed_value", None)
 
         # type checks
         for k in self.key_types:
             if k not in COL_TYPES:
                 raise ValueError(
-                    f"The selected key_type '{k}' is invalid. The possible values are 'bytes', 'uuid', 'int', 'string'."
+                    f"The selected key_type '{k}' is invalid. The possible values are {', '.join(COL_TYPES)}"
                 )
 
         for t in self.value_types:
             if t not in COL_TYPES:
                 raise ValueError(
-                    f"The selected value_type '{t}' is invalid. The possible values are 'bytes', 'uuid', 'int', 'string'."
+                    f"The selected value_type '{t}' is invalid. The possible values are {', '.join(COL_TYPES)}."
                 )
 
         self.key_types_and_sizes = dict(zip(self.key_types, self.key_sizes))
@@ -125,6 +126,8 @@ class Kv:
             return uuid.UUID(int=self.rng.getrandbits(128), version=4)
         elif data_type == "int":
             return self.rng.randint(0, 2**63 - 1)
+        elif data_type == "fixed":
+            return self.fixed_value
         elif data_type == "string":
             return (
                 self.rng.getrandbits(8 * size)

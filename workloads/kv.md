@@ -29,16 +29,19 @@ Here are the avaliable **arguments** to pass at runtime:
 | batch_size    | size of the multi-row INSERT/UPSERT                            | 1       |
 | cycle_size    | size of the pgworkload iteration                               | 1       |
 | table_name    | name of the table to insert into                               | kv      |
-| key_types     | data types (bytes, uuid, int, string) comma separated list     | bytes   |
-| key_sizes     | key sizes (bytes and string types only) comma separated list   | 32      |
-| value_types   | data types (bytes, uuid, int, string) comma separated list     | bytes   |
+| key_types     | key types comma separated list                                 | bytes   |
+|               | types: bytes, uuid, int, string, fixed                         |         |
+| key_sizes     | key sizes bytes and string types only) comma separated list    | 32      |
+| value_types   | value types comma separated list                               | bytes   |
+|               | types: bytes, uuid, int, string, fixed                         |         |
 | value_sizes   | value sizes (bytes and string types only) comma separated list | 256     |
+| fixed_value   | hardcoded value for type `fixed`                               |         |
 | ~~seed~~      | ~~the random generator seed number~~  COMING SOON!             |         |
 | read_pct      | the percent of operations that are SELECT statements           | 0       |
 | update_pct    | the percent of operations that are UPDATE statements           | 0       |
 | delete_pct    | the percent of operations that are DELETE statements           | 0       |
 | key_pool_size | the size of the list to pick keys from for read operation      | 10000   |
-| write_mode    | `insert`, `update`, `do_nothing` for `ON CONFLICT DO NOTHING`  | insert  |
+| write_mode    | `insert`, `upsert`, `do_nothing` for `ON CONFLICT DO NOTHING`  | insert  |
 | aost          | value to pass to the `AS OF SYSTEM TIME` clause.               |         |  
 |               | set to `fr` for _follower_read_timestamp()_                    |         |
 
@@ -177,4 +180,50 @@ The total shows we have 71 rows in our table.
   f8173d3b-f287-4c88-98bc-dc68f606cc6e | qvy | jMdim | \xae | 6115621406519874297 | 2024-04-23 18:16:13.279258+00
   fc599e29-c157-4b5b-a26f-f311096094c8 | 9R3 | OpvqD | \xc5 | 5290408709402028339 | 2024-04-23 18:16:12.359142+00
 (71 rows)
+```
+
+### Example 4 - partitioning by list
+
+Run a KV workload against a table that is partitioned geographically.
+
+```sql
+CREATE TABLE public.kv_loc (
+    k STRING NOT NULL,
+    k1 STRING NOT NULL,
+    v BYTES NULL,
+    CONSTRAINT pk PRIMARY KEY (k ASC, k1 ASC)
+) PARTITION BY LIST (k) (
+   PARTITION west VALUES IN (('WEST')),
+   PARTITION east VALUES IN (('EAST'))
+);
+```
+
+Then you can use the `fixed` type and the `fixed_value` argument to simulate 2 distinct flows:
+
+```bash
+# EAST FLOW
+pgworkload run [...] \
+  --args '{"key_types":"fixed,string", "key_sizes":",10", "table_name":"kv_loc", "fixed_value":"EAST"}'```
+```
+
+And on another server
+
+```bash
+# WEST FLOW
+pgworkload run [...] \
+  --args '{"key_types":"fixed,string", "key_sizes":",10", "table_name":"kv_loc", "fixed_value":"WEST"}'```
+```
+
+Here's some rows
+
+```sql
+> select k, k1 from kv_loc limit 5;                                                                                                                                                                                                     
+   k   |     k1
+-------+-------------
+  WEST | 1TtXuoIocX
+  WEST | 1TwBBie5KI
+  WEST | 1lgaDIqzD0
+  WEST | 2BNCVE5JqX
+  WEST | 2VeFeymCY6
+(5 rows)
 ```
