@@ -187,7 +187,7 @@ The total shows we have 71 rows in our table.
 Run a KV workload against a table that is partitioned geographically.
 
 ```sql
-CREATE TABLE public.kv_loc (
+CREATE TABLE kv_loc (
     k STRING NOT NULL,
     k1 STRING NOT NULL,
     v BYTES NULL,
@@ -217,13 +217,13 @@ pgworkload run [...] \
 Here's some rows
 
 ```sql
-> select k, k1 from kv_loc limit 5;                                                                                                                                                                                                     
+> select k, k1 from kv_loc limit 5;
    k   |     k1
 -------+-------------
-  WEST | 1TtXuoIocX
-  WEST | 1TwBBie5KI
-  WEST | 1lgaDIqzD0
-  WEST | 2BNCVE5JqX
-  WEST | 2VeFeymCY6
+  EAST | 1EfCgiWsp2
+  EAST | 4MW1PwYciw
+  EAST | 4fHOBeVBJZ
+  EAST | 582RdAw0WV
+  EAST | 5ePVKECiLI
 (5 rows)
 ```
