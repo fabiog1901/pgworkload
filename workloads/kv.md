@@ -31,7 +31,7 @@ Here are the avaliable **arguments** to pass at runtime:
 | table_name    | name of the table to insert into                               | kv      |
 | key_types     | key types comma separated list                                 | bytes   |
 |               | types: bytes, uuid, int, string, fixed                         |         |
-| key_sizes     | key sizes bytes and string types only) comma separated list    | 32      |
+| key_sizes     | key sizes (bytes and string types only) comma separated list   | 32      |
 | value_types   | value types comma separated list                               | bytes   |
 |               | types: bytes, uuid, int, string, fixed                         |         |
 | value_sizes   | value sizes (bytes and string types only) comma separated list | 256     |
@@ -202,7 +202,7 @@ Then you can use the `fixed` type and the `fixed_value` argument to simulate 2 d
 ```bash
 # EAST FLOW
 pgworkload run [...] \
-  --args '{"key_types":"fixed,string", "key_sizes":",10", "table_name":"kv_loc", "fixed_value":"EAST"}'```
+  --args '{"key_types":"fixed,string", "key_sizes":",10", "table_name":"kv_loc", "fixed_value":"EAST"}'
 ```
 
 And on another server
@@ -210,7 +210,7 @@ And on another server
 ```bash
 # WEST FLOW
 pgworkload run [...] \
-  --args '{"key_types":"fixed,string", "key_sizes":",10", "table_name":"kv_loc", "fixed_value":"WEST"}'```
+  --args '{"key_types":"fixed,string", "key_sizes":",10", "table_name":"kv_loc", "fixed_value":"WEST"}'
 ```
 
 Here's some rows
