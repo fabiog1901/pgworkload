@@ -2,7 +2,7 @@
 
 The KV workload allows you great flexibility when choosing the column types and sizes for both the key and the value columns.
 
-Available data types are `bytes` (default), `int`, `uuid`, `string`.
+Available data types are `bytes` (default), `int`, `uuid`, `string`, plus a `fixed` type for when you want to pass a specific constant value.
 
 For types `bytes` and `string`, you can optionally choose the payload size; it defaults to 32 for they key and 256 for the value.
 
