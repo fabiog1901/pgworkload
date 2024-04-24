@@ -276,6 +276,8 @@ def worker(
     if duration:
         endtime = time.time() + duration
 
+    run_init = True
+
     while True:
         if conn_duration:
             # reconnect every conn_duration +/- 20%
@@ -294,6 +296,19 @@ def worker(
         try:
             with psycopg.connect(dburl, autocommit=autocommit) as conn:
                 logger.debug("Connection started")
+
+                # execute setup() only once per thread
+                if run_init:
+                    run_init = False
+
+                    if hasattr(w, "setup") and callable(w.setup):
+                        logger.debug("Executing setup() function")
+                        pgworkload.utils.common.run_transaction(
+                            conn, lambda conn: w.setup(conn), max_retries=MAX_RETRIES
+                        )
+                    else:
+                        logger.debug("No setup() function found.")
+
                 while True:
                     # listen for termination messages (poison pill)
                     try:

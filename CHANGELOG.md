@@ -4,6 +4,7 @@
 
 - added KV workload.
 - SimpleFaker: fixed representation of ARRAY objects.
+- added execution of `setup()` for any newly created thread
 
 ## 0.1.11
 

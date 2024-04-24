@@ -24,7 +24,14 @@ class Bank:
         self.ts: dt.datetime = ""
         self.event: str = ""
 
-    # the run() method returns a list of functions
+    # the setup() function is executed only once
+    # when a new executing thread is started.
+    def setup(self, conn: psycopg.Connection):
+        with conn.cursor() as cur:
+            cur.execute(f"select version()")
+            print("setup >>>> ", cur.fetchone())
+
+    # the run() function returns a list of functions
     # that pgworkload will execute, sequentially.
     # Once every func has been executed, run() is re-evaluated.
     # This process continues until pgworkload exits.
