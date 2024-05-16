@@ -155,7 +155,7 @@ It’s helpful to understand first what `pgworkload` does:
 - By default, it sets the connection to `autocommit` mode.
 - **psycopg v3** will _PREPARE_ statements automatically after 5 executions.
 - Each thread creates a database connection - no need for a connection pool.
-- In a loop, `pgworkload` will:
+- In a loop, each `pgworkload` thread will:
   - execute function `run()` which returns a list of functions.
   - execute each function in the list sequentially. Each function, typically, executes a SQL statement/transaction.
 - Execution stats are funneled back to the _MainThread_, which aggregates and prints them to _stdout_.
@@ -168,8 +168,8 @@ It’s helpful to understand first what `pgworkload` does:
 
 There are 2 parameters that can be used to configure how many processes you want to create, and for each process, how many threads:
 
-- `--procs`, or `-x`, to configure the count of processes (defaults to the CPU count)
-- `--concurrency`, or `-c`, to configure the total number of executing workloads to run (also referred to as _executing threads_)
+- `--procs/-x`, to configure the count of processes (defaults to the CPU count)
+- `--concurrency/-c`, to configure the total number of connections (also referred to as _executing threads_)
 
 `pgworkload` will spread the load across the processes, so that each process has an even amount of threads.
 
@@ -180,7 +180,7 @@ Example: if we set `--procs 4` and `--concurrency 10`, pgworkload will create as
 - Process-3: MainThread + 2 extra thread.  Total = 3
 - Process-4: MainThread + 2 extra thread.  Total = 3
 
-Total workloads = 10
+Total executing threads/connections = 10
 
 This allows you to fine tune the count of Python processes and threads to fit your system.
 
