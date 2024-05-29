@@ -12,7 +12,7 @@ The `batch_size` configures the size of the multi-row `INSERT` statement, while 
 You can also fine-tune your read/write/update/delete ratio using the `read_pct`, `update_pct` and `delete_pct` arguments, and have the SELECTs executed as historical (`AOST`) queries with argument `aost`.
 
 Configuring a large `key_pool_size` allows your read to be more random, but the pool will take longer to fill with keys you have inserted, and it will consume more memory.
-Conversely, a smaller pool is cheaper on resources and fills up quicklier, but there will be fewer keys to pick from.
+Conversely, a smaller pool is cheaper on resources and fills up quicker, but there will be fewer keys to pick from.
 The pool is a fixed size [`deque` object](https://docs.python.org/3/library/collections.html#collections.deque): as you insert new keys into the table, the keys are added to the deque.
 When you have added more keys than the pre-defined size, older keys are pushed out and only the most recent keys are kept.
 During a read operation, a random value from the deque is picked as the predicate for the SELECT/UPDATE/DELETE statement.
