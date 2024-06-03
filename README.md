@@ -1,3 +1,5 @@
+**pgworkload has matured and became [dbworkload](https://github.com/fabiog1901/dbworkload)!**
+
 # pgworkload - workload utility for the PostgreSQL protocol
 
 ## Overview
@@ -60,8 +62,8 @@ wget https://raw.githubusercontent.com/fabiog1901/pgworkload/main/workloads/bank
 
 Make sure your **CockroachDB** cluster or **PostgreSQL** server is up and running.
 
-Connect to the SQL prompt and load the `bank.sql` file.
-In CockroachDB, you can run
+Connect to the SQL prompt and execute the DDL statements in the `bank.sql` file.
+In CockroachDB, you can simply run
 
 ```sql
 sql> \i bank.sql
@@ -79,6 +81,10 @@ The CSV files will be located inside a `bank` directory.
 $ ls -lh bank
 total 1032
 -rw-r--r--  1 fabio  staff   513K Apr  9 13:01 ref_data.0_0_0.csv
+
+$ head -n2 bank/ref_data.0_0_0.csv 
+0       simplefaker     b66ab5dc-1fcc-4ac8-8ad0-70bbbb463f00    alpha   16381   {124216.6,416559.9,355271.42,443666.45,689859.03,461510.94,31766.46,727918.45,361202.5,561364.1}        12421672576.9632        2022-10-18 04:57:37.613512      2022-10-18     13:36:48 1001010011      \xe38a2e10b400a8e77eda  {ID-cUJeNcMZ,ID-mWxhyiqN,ID-0FnlVOO5}   0       "{""k"":""cUJNcMZ""}"
+1       simplefaker     f2ebb78a-5af3-4755-8c22-2ad06aa3b26c    bravo   39080           35527177861.6551        2022-12-25 09:12:04.771673      2022-12-25      13:05:42        0110111101      \x5a2efedf253aa3fbeea8  {ID-gQkRkMxIkSjihWcWTcr,ID-o7iDzl9AMJoFfduo6Hz,ID-5BS3MlZgOjxFZRBgBmf}  0       "{""k"":""5Di0UHLWMEuR7""}"
 ```
 
 Now you can import the CSV file.
@@ -99,45 +105,56 @@ At the SQL prompt, import the file
 sql> IMPORT INTO ref_data CSV DATA ('http://localhost:3000/ref_data.0_0_0.csv') WITH delimiter = e'\t'; 
 ```
 
+In PostgreSQL Server, at the SQL prompt, just use `COPY`
+
+```sql
+bank=# COPY ref_data FROM '/Users/fabio/workloads/bank/ref_data.0_0_0.csv' WITH CSV DELIMITER AS e'\t';
+COPY 100
+Time: 2.713 ms
+```
+
 ### Step 2 - Run the workload
 
-Run the workload using 8 connections for 120 seconds or 100k cycles, whichever comes first.
+Run the workload using 4 connections for 120 seconds or 100k cycles, whichever comes first.
 
 ```bash
 # CockroachDB
-pgworkload run -w bank.py -c 8 --url 'postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank' -d 120 -i 100000
+pgworkload run -w bank.py -c 4 --url 'postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank' -d 120 -i 100000
 
 # PostgreSQL
-pgworkload run -w bank.py -c 8 --url 'postgres://root@localhost:5432/bank?sslmode=disable&application_name=Bank' -d 120 -i 100000
+pgworkload run -w bank.py -c 4 --url 'postgres://fabio:postgres@localhost:5432/bank?sslmode=disable&application_name=Bank' -d 120 -i 100000
 ```
 
 `pgworkload` uses exclusively the excellent [Psycopg 3](https://www.psycopg.org/psycopg3/docs/) to connect.
 No other ORMs or drivers/libraries are used.
 Psycopg has a very simple, neat way to [create connections and execute statements](https://www.psycopg.org/psycopg3/docs/basic/usage.html) and [transactions](https://www.psycopg.org/psycopg3/docs/basic/transactions.html).
 
-`pgworkload` will output something like below
+`pgworkload` will output rolling statistics about throughput and latency for each transaction in your workload class
 
 ```text
-2022-01-28 17:22:43,893 [INFO] (MainProcess 29511) URL: 'postgres://root@localhost:26257/bank?sslmode=disable&application_name=Bank'
 id               elapsed    tot_ops    tot_ops/s    period_ops    period_ops/s    mean(ms)    p50(ms)    p90(ms)    p95(ms)    p99(ms)    pMax(ms)
 -------------  ---------  ---------  -----------  ------------  --------------  ----------  ---------  ---------  ---------  ---------  ----------
-__cycle__             10       1342       133.72          1342           134.2       54.9       35.76     165.94     192.89     245.42      333.6
-read                  10       1215       121.03          1215           121.5       41.11      19.58     113.21     146.79     208.86      291.02
-txn1_new              10        130        12.95           130            13         48.29      53.81      74.7       90.84      95.66      108.37
-txn2_verify           10        129        12.85           129            12.9       70.9       73.73      94.3       99.69     137.99      164.96
-txn3_finalize         10        127        12.65           127            12.7       67.21      72.48      93.64     105.97     129.57      166 
+__cycle__             10       3206       320.13          3206           320.6       11.4        0.49      23.31      23.97      25.13       54.63
+read                  10       1614       161.15          1614           161.4        0.19       0.17       0.28       0.31       0.4         1.82
+txn1_new              10       1596       159.34          1596           159.6        0.34       0.29       0.44       0.49       0.67       21.13
+txn2_verify           10       1594       159.13          1594           159.4       11.15      10.88      11.93      12.5       13.23       43.28
+txn3_finalize         10       1592       158.92          1592           159.2       11.23      10.94      12.02      12.68      13.37       39.77 
 
 [...]
 
-2022-01-28 17:24:44,765 [INFO] (MainProcess 29511) Requested iteration/duration limit reached. Printing final stats
+2024-05-17 15:28:11,589 [INFO] (MainProcess MainThread) run:194: Requested iteration/duration limit reached. Printing final stats
 id               elapsed    tot_ops    tot_ops/s    period_ops    period_ops/s    mean(ms)    p50(ms)    p90(ms)    p95(ms)    p99(ms)    pMax(ms)
 -------------  ---------  ---------  -----------  ------------  --------------  ----------  ---------  ---------  ---------  ---------  ----------
-__cycle__            121      14519       120.12            66             6.6       94.08      96.68     203.74     216.83     242.24      262.69
-read                 121      13050       107.96            54             5.4       70.6       62.7      127.88     151.29     203.52      203.62
-txn1_new             121       1469        12.15             7             0.7       51.08      51.07      71.71      73.66      75.23       75.62
-txn2_verify          121       1469        12.15            11             1.1       70.52      76.92     102.31     102.32     102.33      102.33
-txn3_finalize        121       1469        12.15            12             1.2       81.19      98.97     103.88     103.97     103.98      103.98 
+__cycle__            121      40639       336.43           251            25.1       11.55       0.44      24.1       24.9       25.99       26.38
+read                 121      20427       169.1            128            12.8        0.22       0.19       0.33       0.35       0.41        0.44
+txn1_new             121      20212       167.32           120            12          0.38       0.34       0.5        0.58       0.76        0.79
+txn2_verify          121      20212       167.32           121            12.1       11.38      11.17      12.65      12.93      13.38       13.39
+txn3_finalize        121      20212       167.32           123            12.3       11.54      11.41      12.73      13.03      13.55       13.97
 ```
+
+You can always use **pgAdmin** for PostgreSQL Server or the **DB Console** for CockroachDB to view your workload, too.
+
+![pg_admin](media/pg_admin.png)
 
 There are many built-in options.
 Check them out with
